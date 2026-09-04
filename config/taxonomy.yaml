@@ -1,0 +1,36 @@
+sectors:
+  - VC
+  - CVC
+  - PE
+  - IB
+  - Alternative Investment
+  - Asset Management
+  - Research
+  - Corporate Finance
+  - Other Finance
+  - Irrelevant
+  - Unknown
+seniority:
+  - Intern
+  - Trainee
+  - New Graduate
+  - Junior
+  - Experienced
+  - Senior
+  - Unknown
+role_family:
+  - Investment
+  - Deal Execution
+  - Research
+  - Portfolio Management
+  - Fundraising / IR
+  - Fund Management
+  - Risk
+  - Compliance
+  - Operations
+  - Finance / Accounting
+  - Sales
+  - Marketing
+  - HR / Admin
+  - Technology
+  - Other

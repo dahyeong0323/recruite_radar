@@ -1,0 +1,44 @@
+[
+  {
+    "source": "kvca",
+    "source_id": "3335",
+    "source_url": "https://roadshow.kvca.or.kr/Program/user_board/listbody.html?po_no=3335",
+    "company_raw": "동훈인베스트먼트",
+    "title_raw": "투자본부 인턴채용",
+    "posted_at": "2026-08-31T09:00:00+09:00",
+    "deadline": "2026-09-30T23:59:00+09:00",
+    "active": true,
+    "body_text": "투자본부 인턴. 투자대상 기업 및 산업 분석, 투자 검토 지원. 대학생 및 졸업예정자 지원 가능.",
+    "attachments": [],
+    "discovered_at": "2026-09-04T09:02:14+09:00",
+    "raw_metadata": {"location": "서울"}
+  },
+  {
+    "source": "vcs",
+    "source_id": "vcs-3335",
+    "source_url": "https://www.vcs.go.kr/web/portal/recruitment/view/vcs-3335/all",
+    "company_raw": "동훈인베스트먼트",
+    "title_raw": "동훈인베스트먼트 투자본부 인턴채용 공고",
+    "posted_at": "2026-08-31T10:00:00+09:00",
+    "deadline": "2026-09-30T23:59:00+09:00",
+    "active": true,
+    "body_text": "투자본부 인턴. 투자대상 기업 및 산업 분석, 투자 검토 지원.",
+    "attachments": [],
+    "discovered_at": "2026-09-04T09:03:14+09:00",
+    "raw_metadata": {"location": "서울"}
+  },
+  {
+    "source": "kvca",
+    "source_id": "3336",
+    "source_url": "https://roadshow.kvca.or.kr/Program/user_board/listbody.html?po_no=3336",
+    "company_raw": "동훈인베스트먼트",
+    "title_raw": "경영관리본부 경력직",
+    "posted_at": "2026-08-31T11:00:00+09:00",
+    "deadline": "2026-09-30T23:59:00+09:00",
+    "active": true,
+    "body_text": "경영관리본부 경력직. 총무와 회계 업무.",
+    "attachments": [],
+    "discovered_at": "2026-09-04T09:04:14+09:00",
+    "raw_metadata": {"location": "서울"}
+  }
+]

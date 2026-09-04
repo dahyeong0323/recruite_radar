@@ -1,0 +1,18 @@
+{
+  "job-search": {
+    "jobs": {
+      "count": 1,
+      "job": {
+        "id": "999001",
+        "url": "https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=999001",
+        "active": "1",
+        "posting-timestamp": "1788134400",
+        "expiration-timestamp": "1790726400",
+        "opening-timestamp": "1788134400",
+        "company": {"detail": {"name": "테스트캐피탈"}},
+        "position": {"title": "Investment Analyst Intern", "job-code": {"name": "투자분석"}, "location": {"name": "전국"}},
+        "keyword": "투자, Financial Modeling"
+      }
+    }
+  }
+}

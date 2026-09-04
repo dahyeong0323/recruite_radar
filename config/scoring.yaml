@@ -1,0 +1,14 @@
+relevance:
+  sector: 25
+  investment_front_office: 25
+  intern_junior: 20
+  career_development: 15
+  employer_role_signal: 10
+  confidence: 5
+actionability:
+  eligibility: 30
+  seniority: 25
+  open: 20
+  location: 10
+  start_date: 10
+  requirements: 5

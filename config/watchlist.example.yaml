@@ -1,0 +1,5 @@
+- company: Example Securities
+  sector: IB
+  career_url: https://example.com/careers
+  enabled: false
+  adapter: generic_html

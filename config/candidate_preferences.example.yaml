@@ -1,0 +1,9 @@
+candidate:
+  current_location: Geneva, Switzerland
+  target_country: Korea
+  student: true
+  preferred_sectors:
+    - VC
+    - PE
+    - IB
+  preferred_locations: []
