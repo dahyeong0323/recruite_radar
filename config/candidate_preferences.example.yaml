@@ -7,3 +7,4 @@ candidate:
     - PE
     - IB
   preferred_locations: []
+# Optional operator template; copy into the canonical Vault for human reference. Not loaded at runtime.

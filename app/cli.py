@@ -13,6 +13,7 @@ from app.pipeline.update import IngestionPipeline
 from app.service import RadarService
 from app.vault.dashboard import write_dashboards
 from app.vault.index import rebuild_index
+from app.vault.git_sync import ensure_vault_checkout
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -33,6 +34,9 @@ def _parser() -> argparse.ArgumentParser:
     backfill.add_argument("--project-root", type=Path)
     health = sub.add_parser("health")
     health.add_argument("--project-root", type=Path)
+    for name in ("collect-all", "refresh-active", "digest", "deadline"):
+        scheduled = sub.add_parser(name)
+        scheduled.add_argument("--project-root", type=Path)
     return parser
 
 
@@ -60,6 +64,8 @@ def load_fixture(path: Path) -> list[SourceItem]:
 
 async def run(args) -> int:
     settings = load_settings(getattr(args, "project_root", None))
+    if not settings.dry_run:
+        ensure_vault_checkout(settings)
     bootstrap(settings)
     if args.command == "bootstrap-vault":
         print(settings.radar_root)
@@ -83,6 +89,19 @@ async def run(args) -> int:
         return 0
     if args.command == "health":
         print(health_state(settings.state_path))
+        return 0
+    service = RadarService(settings)
+    if args.command == "collect-all":
+        print(json.dumps(await service.collect_all(), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "refresh-active":
+        print(json.dumps(await service.refresh_active(), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "digest":
+        await service.send_digest()
+        return 0
+    if args.command == "deadline":
+        await service.send_deadline_reminders()
         return 0
     return 1
 

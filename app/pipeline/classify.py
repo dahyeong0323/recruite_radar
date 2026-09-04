@@ -37,9 +37,15 @@ ROLE_TERMS = {
 }
 
 
+def _term_present(text: str, term: str) -> bool:
+    lowered, needle = text.casefold(), term.casefold()
+    if re.fullmatch(r"[a-z]{1,3}", needle):
+        return re.search(rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])", lowered) is not None
+    return needle in lowered
+
+
 def _contains(text: str, terms: tuple[str, ...]) -> bool:
-    lowered = text.casefold()
-    return any(term.casefold() in lowered for term in terms)
+    return any(_term_present(text, term) for term in terms)
 
 
 def _sector(text: str) -> tuple[str, str | None]:
@@ -58,6 +64,21 @@ def _sector(text: str) -> tuple[str, str | None]:
     if _contains(text, ("corporate finance", "재무", "finance")):
         return "Corporate Finance", "Corporate Finance"
     return "Unknown", None
+
+
+def _weighted_sector(item: SourceItem, normalized: NormalizedItem) -> tuple[str, str | None]:
+    fields = ((normalized.title, 6), (normalized.company or "", 5), (item.body_text, 1))
+    groups = {"VC": VC_TERMS, "PE": PE_TERMS, "IB": IB_TERMS}
+    scores = {
+        sector: sum(weight for text, weight in fields for term in terms if _term_present(text, term))
+        for sector, terms in groups.items()
+    }
+    best = max(scores, key=scores.get)
+    if scores[best] > 0:
+        if best == "VC" and any(_term_present(normalized.title + " " + (normalized.company or ""), term) for term in ("CVC", "기업주도형 벤처캐피탈")):
+            return "CVC", "Investment"
+        return best, "General IB" if best == "IB" else "Investment"
+    return _sector(normalized.combined_text)
 
 
 def _seniority(text: str) -> tuple[str, int | None, int | None]:
@@ -87,7 +108,7 @@ def _role_family(text: str) -> str:
 def rule_based_classify(item: SourceItem) -> ClassificationResult:
     normalized = normalize_item(item)
     text = normalized.combined_text
-    sector, subsector = _sector(text)
+    sector, subsector = _weighted_sector(item, normalized)
     seniority, experience_min, experience_max = _seniority(text)
     role = _role_family(text)
     front_office = _contains(text, FRONT_TERMS) and not (

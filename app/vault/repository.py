@@ -26,6 +26,7 @@ class VaultRepository:
         job_id: str | None = None,
         existing_metadata: dict | None = None,
         change: str = "source item ingested",
+        rebuild: bool = True,
     ) -> tuple[Path, dict]:
         async with GLOBAL_VAULT_LOCK:
             existing_body = ""
@@ -43,8 +44,9 @@ class VaultRepository:
                 existing_body=existing_body,
                 changes=[change],
             )
-            entries = rebuild_index(self.radar_root)
-            write_dashboards(self.radar_root, entries)
+            if rebuild:
+                entries = rebuild_index(self.radar_root)
+                write_dashboards(self.radar_root, entries)
             return path, metadata
 
     async def rebuild(self) -> None:

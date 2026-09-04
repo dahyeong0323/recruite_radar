@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 from app.models import IndexEntry
+import yaml
+
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter
 
 
@@ -16,10 +18,12 @@ def load_index(path: Path) -> list[IndexEntry]:
     return [IndexEntry.model_validate(row) for row in rows if isinstance(row, dict)]
 
 
-def _entry_from_note(path: Path, radar_root: Path) -> IndexEntry | None:
+def _entry_from_note(path: Path, radar_root: Path, errors: list[str] | None = None) -> IndexEntry | None:
     try:
         metadata, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError):
+    except (OSError, UnicodeError, yaml.YAMLError, TypeError, ValueError) as error:
+        if errors is not None:
+            errors.append(f"{path.relative_to(radar_root).as_posix()}: {type(error).__name__}")
         return None
     if not metadata.get("id") or not metadata.get("title"):
         return None
@@ -32,6 +36,8 @@ def _entry_from_note(path: Path, radar_root: Path) -> IndexEntry | None:
         company=metadata.get("company"),
         title=str(metadata["title"]),
         sector=str(metadata.get("sector") or "Unknown"),
+        role_family=str(metadata.get("role_family") or "Other"),
+        department=metadata.get("department"),
         seniority=str(metadata.get("seniority") or "Unknown"),
         priority=str(metadata.get("priority") or "Archive"),
         relevance_score=int(metadata.get("relevance_score") or 0),
@@ -41,15 +47,17 @@ def _entry_from_note(path: Path, radar_root: Path) -> IndexEntry | None:
         deadline=metadata.get("deadline"),
         posted_at=metadata.get("posted_at"),
         updated_at=metadata.get("last_checked_at"),
+        application_urls=list(metadata.get("application_urls") or []),
     )
 
 
 def rebuild_index(radar_root: Path) -> list[IndexEntry]:
     jobs_root = radar_root / "Jobs"
     entries: list[IndexEntry] = []
+    errors: list[str] = []
     if jobs_root.exists():
         for path in sorted(jobs_root.rglob("*.md")):
-            entry = _entry_from_note(path, radar_root)
+            entry = _entry_from_note(path, radar_root, errors)
             if entry:
                 entries.append(entry)
     entries.sort(key=lambda entry: (entry.deadline is None, entry.deadline or "9999-12-31", entry.title))
@@ -59,4 +67,6 @@ def rebuild_index(radar_root: Path) -> list[IndexEntry]:
         "jobs": [entry.model_dump(mode="json") for entry in entries],
     }
     atomic_write_text(radar_root / "_System" / "index.json", json.dumps(index, ensure_ascii=False, indent=2) + "\n")
+    diagnostics = {"malformed_notes": errors, "count": len(errors)}
+    atomic_write_text(radar_root / "_System" / "index_errors.json", json.dumps(diagnostics, ensure_ascii=False, indent=2) + "\n")
     return entries

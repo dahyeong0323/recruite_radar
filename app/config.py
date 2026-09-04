@@ -43,9 +43,25 @@ class Settings:
     vcs_list_url: str
     kofia_list_url: str
     saramin_api_url: str
+    github_token: str | None = None
+    ssh_deploy_key: str | None = None
+    saramin_daily_limit: int = 470
+    saramin_keywords_per_run: int = 8
+    scheduler_enabled: bool = True
     http_timeout_seconds: float = 15.0
     http_retries: int = 3
     max_domain_concurrency: int = 2
+
+    @property
+    def secrets(self) -> tuple[str | None, ...]:
+        return (
+            self.telegram_bot_token,
+            self.telegram_webhook_secret,
+            self.saramin_access_key,
+            self.openai_api_key,
+            self.github_token,
+            self.ssh_deploy_key,
+        )
 
     @property
     def radar_root(self) -> Path:
@@ -102,4 +118,9 @@ def load_settings(project_root: Path | None = None) -> Settings:
             "https://www.kofia.or.kr/brd/m_96/list.do?company_cd=&company_nm=&itm_seq_1=0&itm_seq_2=0&multi_itm_seq=0&page={page}&srchFr=&srchTo=&srchTp=&srchWord=",
         ),
         saramin_api_url=os.getenv("SARAMIN_API_URL", "https://oapi.saramin.co.kr/job-search"),
+        github_token=os.getenv("GITHUB_TOKEN") or None,
+        ssh_deploy_key=os.getenv("SSH_DEPLOY_KEY") or None,
+        saramin_daily_limit=int(os.getenv("SARAMIN_DAILY_LIMIT", "470")),
+        saramin_keywords_per_run=int(os.getenv("SARAMIN_KEYWORDS_PER_RUN", "8")),
+        scheduler_enabled=_bool_env("SCHEDULER_ENABLED", True),
     )

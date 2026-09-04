@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
-
 from app.models import IndexEntry
 from app.telegram.client import TelegramClient
 from app.vault.dashboard import _table
+from app.utils.clock import today
 
 
-def select_entries(command: str, entries: list[IndexEntry]) -> list[IndexEntry]:
+def select_entries(command: str, entries: list[IndexEntry], *, timezone_name: str = "Asia/Seoul") -> list[IndexEntry]:
     active = [entry for entry in entries if entry.status == "active"]
     if command == "/intern":
         return [entry for entry in active if entry.seniority in {"Intern", "Trainee"}]
@@ -16,9 +15,9 @@ def select_entries(command: str, entries: list[IndexEntry]) -> list[IndexEntry]:
     if command == "/saved":
         return [entry for entry in entries if entry.user_status in {"interested", "will_apply"}]
     if command == "/deadline":
-        return [entry for entry in active if entry.deadline and 0 <= (entry.deadline - date.today()).days <= 7]
+        return [entry for entry in active if entry.deadline and 0 <= (entry.deadline - today(timezone_name)).days <= 7]
     if command == "/today":
-        return [entry for entry in active if entry.posted_at == date.today()]
+        return [entry for entry in active if entry.posted_at == today(timezone_name)]
     return active
 
 

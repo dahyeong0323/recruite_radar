@@ -133,6 +133,8 @@ class IndexEntry(BaseModel):
     company: str | None = None
     title: str
     sector: str = "Unknown"
+    role_family: str = "Other"
+    department: str | None = None
     seniority: str = "Unknown"
     priority: str = "Archive"
     relevance_score: int = 0
@@ -142,6 +144,7 @@ class IndexEntry(BaseModel):
     deadline: date | None = None
     posted_at: date | None = None
     updated_at: datetime | None = None
+    application_urls: list[str] = Field(default_factory=list)
 
 
 class RunMetrics(BaseModel):
@@ -159,3 +162,7 @@ class RunMetrics(BaseModel):
     classification_failures: int = 0
     telegram_sent: int = 0
     errors: list[str] = Field(default_factory=list)
+
+    @property
+    def durable_success(self) -> bool:
+        return not self.errors

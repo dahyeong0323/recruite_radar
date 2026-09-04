@@ -16,6 +16,7 @@ from app.models import AttachmentRef, SourceItem
 from app.utils.dates import parse_date_text, parse_datetime_text
 from app.utils.retry import with_retry
 from app.utils.text import clean_text
+from app.utils.security import safe_exception
 
 
 class CollectorError(RuntimeError):
@@ -147,12 +148,10 @@ class CollectorBase:
                     raise CollectorError(f"empty response from {url}")
                 return response.text
 
-        return await with_retry(
-            request,
-            retries=self.settings.http_retries,
-            base_delay=0.5,
-            jitter=(0.0, 0.25),
-        )
+        try:
+            return await with_retry(request, retries=self.settings.http_retries, base_delay=0.5, jitter=(0.0, 0.25))
+        except Exception as error:
+            raise CollectorError(safe_exception(self.source, error, self.settings.secrets)) from error
 
     async def get_json(self, url: str, *, params: dict[str, str | int]) -> dict:
         if self._client is None:
@@ -167,7 +166,10 @@ class CollectorBase:
                     raise CollectorError("expected JSON object")
                 return data
 
-        return await with_retry(request, retries=self.settings.http_retries, base_delay=0.5)
+        try:
+            return await with_retry(request, retries=self.settings.http_retries, base_delay=0.5)
+        except Exception as error:
+            raise CollectorError(safe_exception(self.source, error, self.settings.secrets)) from error
 
     async def get_detail_text(self, url: str) -> str:
         await asyncio.sleep(random.uniform(0.5, 1.5))
@@ -199,7 +201,7 @@ class CollectorBase:
             active=None,
             body_text=entry.row_text,
             discovered_at=datetime.now().astimezone(),
-            raw_metadata={"list_row": entry.row_text, "detail_error": f"{type(error).__name__}: {error}"},
+            raw_metadata={"list_row": entry.row_text, "detail_error": safe_exception(self.source, error, self.settings.secrets)},
         )
 
     async def collect(

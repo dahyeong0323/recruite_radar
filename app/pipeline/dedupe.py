@@ -54,6 +54,25 @@ def _has_any(text: str, words: tuple[str, ...]) -> bool:
     return any(word.casefold() in text for word in words)
 
 
+def _department(title: str, explicit: str | None = None) -> str | None:
+    if explicit:
+        return clean_text(explicit).casefold()
+    match = re.search(r"([A-Za-z가-힣0-9/&·]+(?:본부|부서|팀)|[A-Za-z0-9/&·]+\s+(?:department|division))", title, re.IGNORECASE)
+    return clean_text(match.group(1)).casefold() if match else None
+
+
+def _same_application_target(item: SourceItem, entry: IndexEntry) -> bool:
+    incoming = {str(url).rstrip("/") for url in item.raw_metadata.get("application_urls", []) if url}
+    existing = {str(url).rstrip("/") for url in entry.application_urls if url}
+    return bool(incoming & existing)
+
+
+def _posted_gap_days(item: SourceItem, entry: IndexEntry) -> int | None:
+    if not item.posted_at or not entry.posted_at:
+        return None
+    return abs((item.posted_at.date() - entry.posted_at).days)
+
+
 def _compare_title(title: str, company: str | None) -> str:
     normalized = normalize_title(title)
     company_normalized = normalize_item(
@@ -77,11 +96,28 @@ def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
             continue
         if _role_conflict(normalized.title, entry.title):
             continue
+        if entry.role_family != "Other":
+            from app.pipeline.classify import rule_based_classify
+            incoming_role = rule_based_classify(item).role_family
+            if incoming_role != "Other" and incoming_role != entry.role_family:
+                continue
+        incoming_department = _department(normalized.title, item.raw_metadata.get("department"))
+        existing_department = _department(entry.title, entry.department)
+        if incoming_department and existing_department and incoming_department != existing_department:
+            continue
+        same_target = _same_application_target(item, entry)
+        gap = _posted_gap_days(item, entry)
+        if gap is not None and gap > 180:
+            continue
+        if gap is not None and gap > 45 and not same_target:
+            continue
         if entry.deadline and item.deadline and not within_days(entry.deadline, item.deadline, 3):
             continue
         left = _compare_title(normalized.title, normalized.company)
         right = _compare_title(entry.title, entry.company)
         similarity = SequenceMatcher(None, left, right).ratio()
+        if same_target and similarity >= 0.55:
+            similarity = max(similarity, 0.90)
         if best is None or similarity > best[0]:
             best = (similarity, entry)
     if best and best[0] >= 0.85:

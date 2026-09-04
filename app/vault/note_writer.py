@@ -9,6 +9,7 @@ from app.pipeline.dedupe import canonical_id, item_fingerprint
 from app.pipeline.normalize import normalize_item
 from app.pipeline.score import apply_scores
 from app.utils.dates import days_until
+from app.utils.clock import today
 from app.utils.text import clean_text, title_similarity
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter, render_frontmatter
 
@@ -103,7 +104,8 @@ def build_metadata(
     application_urls = _unique_urls([*(existing.get("application_urls") or []), *(item.raw_metadata.get("application_urls") or [])])
     attachments = _merge_attachments(existing.get("attachments"), item.attachments)
     location = item.raw_metadata.get("location") or existing.get("location")
-    status = "active" if item.active is True else "closed" if item.active is False else existing.get("status", "active")
+    deadline_date = _date_only(item.deadline) or _date_only(existing.get("deadline"))
+    status = "closed" if item.active is False or (deadline_date is not None and deadline_date < today()) else "active" if item.active is True else existing.get("status", "active")
     pending = classification.status == "classification_pending"
     sector = existing.get("sector", "Unknown") if pending and existing.get("sector") else classification.sector if classification.sector != "Unknown" else existing.get("sector", "Unknown")
     subsector = existing.get("subsector") if pending and existing.get("subsector") else classification.subsector or existing.get("subsector")
@@ -130,7 +132,7 @@ def build_metadata(
                 "experience_max": classification.experience_max if classification.experience_max is not None else existing.get("experience_max"),
             }
         ),
-        active=item.active,
+        active=status == "active",
         location=location,
         deadline=_date_only(item.deadline) or _date_only(existing.get("deadline")),
         requirements_present=bool(item.body_text) or bool(existing),
@@ -163,6 +165,7 @@ def build_metadata(
         "last_seen_at": _iso(now),
         "last_checked_at": _iso(now),
         "location": location,
+        "department": item.raw_metadata.get("department") or existing.get("department"),
         "experience_min": classification.experience_min if classification.experience_min is not None else existing.get("experience_min"),
         "experience_max": classification.experience_max if classification.experience_max is not None else existing.get("experience_max"),
         "student_eligible": student_eligible,
@@ -215,17 +218,28 @@ def render_job_note(
     previous_changes: list[str] = []
     if existing_body and "## Change Log" in existing_body:
         old_log = existing_body.split("## Change Log", 1)[1].split("## Source Text", 1)[0]
-        previous_changes = [line.strip() for line in old_log.splitlines() if line.strip().startswith("-")]
-    change_lines = previous_changes + (changes or [])
+        previous_changes = [line.strip().removeprefix("-").strip() for line in old_log.splitlines() if line.strip().startswith("-")]
+    change_lines = previous_changes + [line.strip().removeprefix("-").strip() for line in (changes or [])]
     change_block = "\n".join(f"- {line}" for line in change_lines) or "- 최초 수집"
     preserved_sections: list[str] = []
-    for marker in ("## User Notes", "## Status Change"):
+    for marker in ("## User Notes", "## Status History", "## Status Change"):
         if existing_body and marker in existing_body:
-            preserved_sections.append(existing_body[existing_body.index(marker) :].strip())
+            start = existing_body.index(marker)
+            following = [existing_body.find(other, start + len(marker)) for other in ("## User Notes", "## Status History", "## Status Change")]
+            following = [position for position in following if position >= 0]
+            end = min(following) if following else len(existing_body)
+            section = existing_body[start:end].strip()
+            if marker == "## Status Change":
+                section = section.replace("## Status Change", "## Status History", 1)
+            if section and not any(part.startswith(section.splitlines()[0]) for part in preserved_sections):
+                preserved_sections.append(section)
     preserved = "\n\n" + "\n\n".join(preserved_sections) + "\n" if preserved_sections else ""
     source_text = clean_text(item.body_text)
     if existing_body and "## Source Text" in existing_body:
         previous_source = existing_body.split("## Source Text", 1)[1]
+        for marker in ("## User Notes", "## Status History", "## Status Change"):
+            if marker in previous_source:
+                previous_source = previous_source.split(marker, 1)[0]
         if "```" in previous_source:
             previous_source = previous_source.split("```", 2)[1].strip()
         if previous_source and previous_source != source_text and source_text not in previous_source:

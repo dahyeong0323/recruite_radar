@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date
 from pathlib import Path
 
 from app.models import IndexEntry
 from app.utils.dates import days_until
 from app.vault.frontmatter import atomic_write_text
+from app.utils.clock import today
 
 
 def _link(entry: IndexEntry) -> str:
@@ -37,7 +37,7 @@ def render_dashboard(entries: list[IndexEntry]) -> str:
 
 ## Last Refresh
 
-- Generated at: {date.today().isoformat()}
+- Generated at: {today().isoformat()}
 - System health: [[_System/Health]]
 - Machine index: [[_System/index.json]]
 

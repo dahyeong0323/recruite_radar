@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from app.vault.dashboard import write_dashboards
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter, render_frontmatter
 from app.vault.index import rebuild_index
 from app.vault.repository import GLOBAL_VAULT_LOCK
+from app.utils.clock import now
 
 
 VALID_STATUSES = {"unreviewed", "interested", "will_apply", "applied", "interview", "waiting", "rejected", "offer", "ignored", "withdrawn"}
@@ -21,7 +23,16 @@ def _set_user_status_unlocked(vault_root: Path, radar_root: Path, job_id: str, s
     metadata, body = parse_frontmatter(path.read_text(encoding="utf-8"))
     old = metadata.get("user_status", "unreviewed")
     metadata["user_status"] = status
-    atomic_write_text(path, render_frontmatter(metadata) + "\n" + body.rstrip() + f"\n\n## Status Change\n\n- `{old}` → `{status}`\n")
+    timestamp = now().isoformat()
+    line = f"- {timestamp}: `{old}` → `{status}`"
+    body = body.replace("## Status Change", "## Status History")
+    if "## Status History" in body:
+        before, history = body.split("## Status History", 1)
+        body = before.rstrip() + "\n\n## Status History\n\n" + history.strip() + "\n" + line
+    else:
+        body = body.rstrip() + "\n\n## Status History\n\n" + line
+    body = re.sub(r"(?:\n## Status History\n){2,}", "\n## Status History\n", body)
+    atomic_write_text(path, render_frontmatter(metadata) + "\n" + body.rstrip() + "\n")
     entries = rebuild_index(radar_root)
     write_dashboards(radar_root, entries)
     return path
@@ -43,9 +54,7 @@ async def mark_alerted(radar_root: Path, job_id: str) -> Path:
             raise FileNotFoundError(f"expected one note for {job_id}, found {len(matches)}")
         path = matches[0]
         metadata, body = parse_frontmatter(path.read_text(encoding="utf-8"))
-        from datetime import datetime
-
-        metadata["telegram_alerted_at"] = datetime.now().astimezone().isoformat()
+        metadata["telegram_alerted_at"] = now().isoformat()
         atomic_write_text(path, render_frontmatter(metadata) + "\n" + body.rstrip() + "\n")
         entries = rebuild_index(radar_root)
         write_dashboards(radar_root, entries)

@@ -3,3 +3,4 @@
   career_url: https://example.com/careers
   enabled: false
   adapter: generic_html
+# Optional operator template; copy into the canonical Vault for human reference. Not loaded at runtime.

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from app.utils.security import safe_exception
 
 
 class TelegramError(RuntimeError):
@@ -21,12 +22,15 @@ class TelegramClient:
             await self.client.aclose()
 
     async def _call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = await self.client.post(f"{self.base_url}/{method}", json=payload)
-        response.raise_for_status()
-        data = response.json()
-        if not data.get("ok"):
-            raise TelegramError(data.get("description", "Telegram API error"))
-        return data
+        try:
+            response = await self.client.post(f"{self.base_url}/{method}", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get("ok"):
+                raise TelegramError(data.get("description", "Telegram API error"))
+            return data
+        except Exception as error:
+            raise TelegramError(safe_exception(f"Telegram {method}", error, (self.token,))) from error
 
     async def send_message(self, chat_id: str, text: str, *, reply_markup: dict | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text, "disable_web_page_preview": False}

@@ -12,7 +12,11 @@ from app.telegram.callbacks import handle_callback
 from app.telegram.client import TelegramClient
 from app.telegram.commands import handle_command
 from app.vault.index import load_index
-from app.vault.git_sync import GitSync
+from app.vault.git_sync import ensure_vault_checkout
+from app.health.readiness import readiness
+from app.utils.security import safe_exception
+from app.vault.frontmatter import atomic_write_text
+import json
 
 
 settings = load_settings()
@@ -22,13 +26,20 @@ scheduler = configure_scheduler(service, settings.timezone)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not settings.dry_run:
+        ensure_vault_checkout(settings)
     settings.radar_root.mkdir(parents=True, exist_ok=True)
     (settings.radar_root / "_System").mkdir(parents=True, exist_ok=True)
-    if not settings.dry_run:
-        GitSync(settings.vault_root, branch=settings.branch, radar_relative_path=settings.vault_relative_path, dry_run=False).sync_remote()
-    scheduler.start()
+    if not settings.state_path.exists():
+        atomic_write_text(settings.state_path, json.dumps({"sources": {}, "updated_at": None}, indent=2) + "\n")
+    ready, reasons = readiness(settings)
+    if not ready:
+        raise RuntimeError("production readiness failed: " + "; ".join(reasons))
+    if settings.scheduler_enabled:
+        scheduler.start()
     yield
-    scheduler.shutdown(wait=False)
+    if settings.scheduler_enabled:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Korea Finance Recruiting Radar", lifespan=lifespan)
@@ -36,7 +47,24 @@ app = FastAPI(title="Korea Finance Recruiting Radar", lifespan=lifespan)
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "dry_run": settings.dry_run}
+    ready, reasons = readiness(settings)
+    return {
+        "status": health_state(settings.state_path), "ready": ready,
+        "dry_run": settings.dry_run, "reasons": reasons, "sources": service._health_rows(),
+    }
+
+
+@app.get("/livez")
+async def livez() -> dict:
+    return {"status": "alive"}
+
+
+@app.get("/readyz")
+async def readyz() -> dict:
+    ready, reasons = readiness(settings)
+    if not ready:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "reasons": reasons})
+    return {"status": "ready", "dry_run": settings.dry_run}
 
 
 @app.post("/telegram/webhook")
