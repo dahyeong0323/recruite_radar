@@ -7,7 +7,6 @@ The application code lives here, while the canonical records are Markdown files 
 ## Local setup
 
 ```powershell
-cd recruiting-radar
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
@@ -26,6 +25,12 @@ python -m pytest
 ```
 
 For a real collection run, configure the source endpoints and credentials, then use `collect --source kvca|vcs|kofia|saramin`. Keep `DRY_RUN=true` until the fixture and regression suite are green.
+
+## Railway
+
+Railway can deploy this repository directly from the root `Dockerfile`. The container listens on Railway's `PORT` and exposes `GET /health` for health checks. Start with `DRY_RUN=true`, then configure the variables in `.env.example` in Railway's environment settings before enabling production writes.
+
+Production Git synchronization requires a writable `VAULT_ROOT` checkout with an authenticated Git remote. Keep all tokens and deploy credentials in Railway variables or a secret manager; never commit `.env`.
 
 ## Current implementation boundary
 
