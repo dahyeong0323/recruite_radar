@@ -27,7 +27,7 @@ Production is explicit: set `DRY_RUN=false`, a writable absolute `VAULT_ROOT`, `
 2. otherwise validates the Git worktree, repairs `origin` when configured, fetches, checks out the branch, and pulls with rebase;
 3. fails closed before the scheduler starts if checkout or readiness fails.
 
-For private HTTPS repositories, supply a fine-grained `GITHUB_TOKEN` with contents read/write access to only the Vault repository. Authentication is passed to Git through process environment config; never embed credentials in `VAULT_GIT_URL`. Automation commits use `git commit --only` scoped to `VAULT_RELATIVE_PATH`, so unrelated staged files are not included. A dedicated server-side clone is still strongly recommended.
+For private repositories, prefer a repository-scoped write-enabled SSH deploy key via `SSH_DEPLOY_KEY` and an SSH `VAULT_GIT_URL`. A fine-grained `GITHUB_TOKEN` limited to the Vault repository is also supported for HTTPS. Authentication is passed through process environment config; never embed credentials in `VAULT_GIT_URL`. Automation commits use `git commit --only` scoped to `VAULT_RELATIVE_PATH`, so unrelated staged files are not included. A dedicated server-side clone is still strongly recommended.
 
 Railway example:
 
@@ -103,6 +103,7 @@ Zero successful source runs are `DEGRADED`, not healthy.
 | `VAULT_GIT_URL` | Credential-free canonical Vault remote URL. |
 | `VAULT_BRANCH` | Canonical Vault branch. |
 | `GITHUB_TOKEN` | Optional private HTTPS Git authentication secret. |
+| `SSH_DEPLOY_KEY` | Preferred repository-scoped private SSH deploy key. |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot secret. |
 | `TELEGRAM_CHAT_ID` | Authorized destination chat. |
 | `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook request verification secret. |

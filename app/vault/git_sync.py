@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import subprocess
 import base64
+import hashlib
+import shlex
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -26,7 +29,7 @@ class GitSync:
         self, repo_root: Path, *, branch: str = "main",
         radar_relative_path: Path | str = "Career/Recruiting_Radar",
         dry_run: bool = True, retries: int = 3, git_url: str | None = None,
-        github_token: str | None = None,
+        github_token: str | None = None, ssh_deploy_key: str | None = None,
     ) -> None:
         self.repo_root = Path(repo_root)
         self.branch = branch
@@ -35,10 +38,23 @@ class GitSync:
         self.retries = retries
         self.git_url = git_url
         self.github_token = github_token
+        self.ssh_deploy_key = ssh_deploy_key
 
     @property
     def _secrets(self) -> tuple[str | None, ...]:
-        return (self.github_token,)
+        return (self.github_token, self.ssh_deploy_key)
+
+    def _ssh_key_path(self) -> Path | None:
+        if not self.ssh_deploy_key:
+            return None
+        digest = hashlib.sha256(self.ssh_deploy_key.encode()).hexdigest()[:16]
+        path = Path(tempfile.gettempdir()) / f"recruiting-radar-{digest}.key"
+        if not path.exists() or path.read_text(encoding="utf-8") != self.ssh_deploy_key:
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(self.ssh_deploy_key.rstrip() + "\n")
+            os.chmod(path, 0o600)
+        return path
 
     def _git_env(self) -> dict[str, str]:
         env = os.environ.copy()
@@ -49,6 +65,9 @@ class GitSync:
                 "GIT_CONFIG_KEY_0": "http.extraheader",
                 "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {basic}",
             })
+        key_path = self._ssh_key_path()
+        if key_path:
+            env["GIT_SSH_COMMAND"] = f"ssh -i {shlex.quote(str(key_path))} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
         env["GIT_TERMINAL_PROMPT"] = "0"
         return env
 
@@ -147,4 +166,5 @@ def ensure_vault_checkout(settings) -> GitResult:
     return GitSync(
         settings.vault_root, branch=settings.branch, radar_relative_path=settings.vault_relative_path,
         dry_run=settings.dry_run, git_url=settings.git_url, github_token=settings.github_token,
+        ssh_deploy_key=settings.ssh_deploy_key,
     ).ensure_vault_checkout()

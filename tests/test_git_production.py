@@ -82,3 +82,14 @@ def test_git_failure_message_redacts_token(tmp_path):
     with pytest.raises(VaultCheckoutError) as caught:
         sync.ensure_vault_checkout()
     assert token not in str(caught.value)
+
+
+def test_ssh_deploy_key_is_not_embedded_in_command(tmp_path):
+    private_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nfake-test-key\n-----END OPENSSH PRIVATE KEY-----"
+    sync = GitSync(tmp_path, dry_run=False, git_url="git@github.com:owner/vault.git", ssh_deploy_key=private_key)
+    key_path = sync._ssh_key_path()
+    assert key_path is not None
+    assert key_path.read_text(encoding="utf-8").strip() == private_key
+    command = sync._git_env()["GIT_SSH_COMMAND"]
+    assert command.startswith("ssh -i ")
+    assert private_key not in command

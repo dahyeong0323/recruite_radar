@@ -38,6 +38,7 @@ class RadarService:
             self.settings.vault_root, branch=self.settings.branch,
             radar_relative_path=self.settings.vault_relative_path, dry_run=self.settings.dry_run,
             git_url=self.settings.git_url, github_token=self.settings.github_token,
+            ssh_deploy_key=self.settings.ssh_deploy_key,
         )
 
     async def _persist(self, message: str) -> bool:
