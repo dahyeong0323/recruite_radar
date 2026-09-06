@@ -84,6 +84,21 @@ def test_git_failure_message_redacts_token(tmp_path):
     assert token not in str(caught.value)
 
 
+def test_ssh_url_user_is_not_treated_as_embedded_credentials(tmp_path, monkeypatch):
+    sync = GitSync(
+        tmp_path / "checkout",
+        dry_run=False,
+        git_url="ssh://git@ssh.github.com:443/owner/vault.git",
+    )
+    monkeypatch.setattr(
+        sync,
+        "_run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, "", "expected clone failure"),
+    )
+    with pytest.raises(VaultCheckoutError, match="git clone failed"):
+        sync.ensure_vault_checkout()
+
+
 def test_ssh_deploy_key_is_not_embedded_in_command(tmp_path):
     private_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nfake-test-key\n-----END OPENSSH PRIVATE KEY-----"
     sync = GitSync(tmp_path, dry_run=False, git_url="git@github.com:owner/vault.git", ssh_deploy_key=private_key)

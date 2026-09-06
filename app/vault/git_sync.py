@@ -86,7 +86,7 @@ class GitSync:
             return GitResult(False, False, "dry-run: Vault checkout skipped")
         if self.git_url:
             parsed = urlsplit(self.git_url)
-            if parsed.username or parsed.password:
+            if parsed.scheme in {"http", "https"} and (parsed.username or parsed.password):
                 raise VaultCheckoutError("VAULT_GIT_URL must not embed credentials; use GITHUB_TOKEN")
         git_marker = self.repo_root / ".git"
         if not git_marker.exists():
