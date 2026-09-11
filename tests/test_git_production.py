@@ -58,6 +58,25 @@ def test_origin_is_repaired_and_branch_is_checked_out(tmp_path):
     assert git(checkout, "branch", "--show-current") == "main"
 
 
+def test_partial_clone_git_directory_recovers_remote_tracking_branch(tmp_path):
+    _, remote = make_remote(tmp_path)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    git(checkout, "init")
+    git(checkout, "remote", "add", "origin", str(remote))
+
+    result = GitSync(
+        checkout,
+        branch="main",
+        dry_run=False,
+        git_url=str(remote),
+    ).ensure_vault_checkout()
+
+    assert result.pushed is True
+    assert git(checkout, "branch", "--show-current") == "main"
+    assert git(checkout, "rev-parse", "origin/main") == git(checkout, "rev-parse", "HEAD")
+
+
 def test_radar_commit_excludes_unrelated_staged_file(tmp_path):
     _, remote = make_remote(tmp_path)
     checkout = tmp_path / "checkout"

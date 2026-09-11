@@ -81,6 +81,10 @@ class GitSync:
         detail = redact((result.stderr or "").strip() or (result.stdout or "").strip() or f"exit {result.returncode}", self._secrets)
         return VaultCheckoutError(f"{operation} failed: {detail}")
 
+    def _fetch_branch(self) -> subprocess.CompletedProcess[str]:
+        refspec = f"+refs/heads/{self.branch}:refs/remotes/origin/{self.branch}"
+        return self._run("fetch", "origin", refspec)
+
     def ensure_vault_checkout(self) -> GitResult:
         if self.dry_run:
             return GitResult(False, False, "dry-run: Vault checkout skipped")
@@ -114,7 +118,7 @@ class GitSync:
                 repair = self._run("remote", "set-url", "origin", self.git_url)
                 if repair.returncode != 0:
                     raise self._failure("git remote repair", repair)
-        fetch = self._run("fetch", "origin", self.branch)
+        fetch = self._fetch_branch()
         if fetch.returncode != 0:
             raise self._failure("git fetch", fetch)
         local_branch = self._run("show-ref", "--verify", f"refs/heads/{self.branch}")
@@ -153,7 +157,7 @@ class GitSync:
             push = self._run("push", "origin", self.branch)
             if push.returncode == 0:
                 return GitResult(True, True, "pushed")
-            fetch = self._run("fetch", "origin", self.branch)
+            fetch = self._fetch_branch()
             if fetch.returncode != 0:
                 continue
             pull = self._run("pull", "--rebase", "origin", self.branch)
