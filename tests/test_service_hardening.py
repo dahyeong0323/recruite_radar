@@ -67,6 +67,35 @@ def test_collect_all_runs_only_explicitly_enabled_sources(settings):
     assert called == [("kvca", True), ("vcs", True)]
 
 
+def test_successful_source_persists_health_as_the_final_vault_write(settings, monkeypatch):
+    service = RadarService(settings)
+    service._collector = lambda source: FakeCollector([])
+    events = []
+
+    async def ingest(items, source=None):
+        return RunMetrics(
+            run_id="healthy", started_at=datetime.now().astimezone(),
+            finished_at=datetime.now().astimezone(), source=source,
+        )
+
+    async def persist(message):
+        events.append(("persist", message))
+        return True
+
+    def record_health(*args, **kwargs):
+        events.append(("health", kwargs.get("state")))
+
+    service.pipeline.ingest = ingest
+    service._persist = persist
+    monkeypatch.setattr(service_module, "write_health_note", record_health)
+
+    result = asyncio.run(service.collect_source("kvca"))
+
+    assert result["errors"] == []
+    assert events[-2][0] == "health"
+    assert events[-1] == ("persist", "radar: finalize kvca health")
+
+
 def test_partial_ingestion_preserves_previous_watermark(settings):
     settings.state_path.parent.mkdir(parents=True, exist_ok=True)
     update_source_state(settings.state_path, "kvca", success=True, seen_ids=["old"])

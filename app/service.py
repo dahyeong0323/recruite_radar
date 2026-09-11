@@ -103,16 +103,26 @@ class RadarService:
             )
             if not await self._persist(f"radar: record {source} collection state"):
                 metrics.errors.append("git: source state push failed")
+            health_notes: list[str] = []
             if not refresh:
                 try:
                     metrics.telegram_sent = await self._send_immediate_alerts(items)
                 except Exception as error:  # Telegram failure must not discard collected jobs
                     metrics.errors.append(safe_exception("telegram", error, self.settings.secrets))
-                    write_health_note(self.settings.radar_root, state="DEGRADED", source_rows=self._health_rows(), notes=["Telegram delivery failed; jobs were preserved."])
+                    health_notes.append("Telegram delivery failed; jobs were preserved.")
             if getattr(collector, "errors", []):
-                write_health_note(self.settings.radar_root, state="DEGRADED", source_rows=self._health_rows(), notes=[f"{source}: {len(collector.errors)} detail page(s) fell back to list metadata."])
+                health_notes.append(f"{source}: {len(collector.errors)} detail page(s) fell back to list metadata.")
             if metrics.errors:
-                write_health_note(self.settings.radar_root, state="DEGRADED", source_rows=self._health_rows(), notes=[f"{source}: partial run; watermark preserved."])
+                health_notes.append(f"{source}: partial run; watermark preserved.")
+            write_health_note(
+                self.settings.radar_root,
+                state="DEGRADED" if health_notes else health_state(self.settings.state_path),
+                source_rows=self._health_rows(),
+                notes=health_notes,
+                secrets=self.settings.secrets,
+            )
+            if not await self._persist(f"radar: finalize {source} health"):
+                metrics.errors.append("git: final health push failed")
             return metrics.model_dump(mode="json")
         except Exception as error:  # source isolation is intentional
             await update_source_state_async(self.settings.state_path, source, success=False)
@@ -125,7 +135,6 @@ class RadarService:
         results = []
         for source in self.settings.enabled_sources:
             results.append(await self.collect_source(source, refresh=refresh))
-        write_health_note(self.settings.radar_root, state=health_state(self.settings.state_path), source_rows=self._health_rows())
         return results
 
     def _health_rows(self) -> list[dict]:
