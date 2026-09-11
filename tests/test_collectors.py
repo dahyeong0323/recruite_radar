@@ -92,3 +92,18 @@ def test_detail_failure_falls_back_to_list_fact(settings):
     assert items[0].source_id == "vcs-3335"
     assert "detail_error" in items[0].raw_metadata
     assert collector.errors
+
+
+def test_vcs_repeated_page_stops_without_duplicate_detail_fetches(settings):
+    collector = VcsCollector(settings)
+    collector.get_text = AsyncMock(return_value=(FIXTURES / "vcs/list.html").read_text(encoding="utf-8"))
+    collector.get_detail_text = AsyncMock(return_value=(FIXTURES / "vcs/detail.html").read_text(encoding="utf-8"))
+
+    async def collect_pages():
+        return await collector.collect(max_pages=5)
+
+    items = asyncio.run(collect_pages())
+
+    assert [item.source_id for item in items] == ["vcs-3335"]
+    assert collector.get_text.await_count == 2
+    assert collector.get_detail_text.await_count == 1

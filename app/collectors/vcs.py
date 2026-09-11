@@ -98,10 +98,15 @@ class VcsCollector(CollectorBase):
         refresh_ids = refresh_ids or set()
         items: list[SourceItem] = []
         consecutive_seen = 0
+        encountered_ids: set[str] = set()
         for page in range(1, max_pages + 1):
             list_url = self.list_url_template.format(page=page)
             listing = self.parse_list(await self.get_text(list_url), list_url)
-            for entry in listing:
+            new_entries = [entry for entry in listing if entry.source_id not in encountered_ids]
+            if not new_entries:
+                return items
+            encountered_ids.update(entry.source_id for entry in new_entries)
+            for entry in new_entries:
                 if overlap_start and entry.posted_at and entry.posted_at < overlap_start and entry.source_id not in refresh_ids:
                     return items
                 if entry.source_id in known_ids and entry.source_id not in refresh_ids:
