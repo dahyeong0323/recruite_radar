@@ -77,6 +77,38 @@ def test_partial_clone_git_directory_recovers_remote_tracking_branch(tmp_path):
     assert git(checkout, "rev-parse", "origin/main") == git(checkout, "rev-parse", "HEAD")
 
 
+def test_existing_checkout_recovers_interrupted_managed_changes(tmp_path):
+    _, remote = make_remote(tmp_path)
+    checkout = tmp_path / "checkout"
+    sync = GitSync(checkout, branch="main", dry_run=False, git_url=str(remote))
+    sync.ensure_vault_checkout()
+    health = checkout / "Career" / "Recruiting_Radar" / "Health.md"
+    health.write_text("recovered\n", encoding="utf-8")
+
+    result = sync.ensure_vault_checkout()
+
+    assert result.pushed is True
+    assert git(checkout, "status", "--short") == ""
+    fresh = tmp_path / "fresh"
+    git(tmp_path, "clone", str(remote), str(fresh))
+    assert (fresh / "Career" / "Recruiting_Radar" / "Health.md").read_text(encoding="utf-8") == "recovered\n"
+
+
+def test_existing_checkout_refuses_to_recover_unmanaged_changes(tmp_path):
+    _, remote = make_remote(tmp_path)
+    checkout = tmp_path / "checkout"
+    sync = GitSync(checkout, branch="main", dry_run=False, git_url=str(remote))
+    sync.ensure_vault_checkout()
+    (checkout / "private-note.md").write_text("do not commit\n", encoding="utf-8")
+    health = checkout / "Career" / "Recruiting_Radar" / "Health.md"
+    health.write_text("pending\n", encoding="utf-8")
+
+    with pytest.raises(VaultCheckoutError, match="unmanaged local changes"):
+        sync.ensure_vault_checkout()
+
+    assert not (tmp_path / "remote.git" / "refs" / "heads" / "unexpected").exists()
+
+
 def test_radar_commit_excludes_unrelated_staged_file(tmp_path):
     _, remote = make_remote(tmp_path)
     checkout = tmp_path / "checkout"

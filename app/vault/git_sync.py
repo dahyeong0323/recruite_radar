@@ -85,6 +85,28 @@ class GitSync:
         refspec = f"+refs/heads/{self.branch}:refs/remotes/origin/{self.branch}"
         return self._run("fetch", "origin", refspec)
 
+    def _recover_managed_changes(self) -> None:
+        """Durably preserve writes left by an interrupted automation process.
+
+        The production checkout is dedicated to the radar, but fail closed if
+        anything outside its managed path is dirty. This avoids both startup
+        loops after a crash and accidental commits of unrelated Vault notes.
+        """
+        path = self.radar_relative_path.as_posix()
+        managed = self._run("status", "--porcelain=v1", "--untracked-files=all", "--", path)
+        unmanaged = self._run(
+            "status", "--porcelain=v1", "--untracked-files=all", "--", ".", f":(exclude){path}"
+        )
+        if managed.returncode != 0 or unmanaged.returncode != 0:
+            raise VaultCheckoutError("could not inspect production Vault working tree")
+        if unmanaged.stdout.strip():
+            raise VaultCheckoutError("production Vault contains unmanaged local changes")
+        if not managed.stdout.strip():
+            return
+        recovered = self.commit_and_push("radar: recover interrupted managed changes")
+        if not recovered.pushed:
+            raise VaultCheckoutError(f"could not recover managed Vault changes: {recovered.message}")
+
     def ensure_vault_checkout(self) -> GitResult:
         if self.dry_run:
             return GitResult(False, False, "dry-run: Vault checkout skipped")
@@ -118,6 +140,9 @@ class GitSync:
                 repair = self._run("remote", "set-url", "origin", self.git_url)
                 if repair.returncode != 0:
                     raise self._failure("git remote repair", repair)
+        self._run("config", "user.name", "Recruiting Radar Bot")
+        self._run("config", "user.email", "recruiting-radar@users.noreply.github.com")
+        self._recover_managed_changes()
         fetch = self._fetch_branch()
         if fetch.returncode != 0:
             raise self._failure("git fetch", fetch)
@@ -129,8 +154,6 @@ class GitSync:
         pull = self._run("pull", "--rebase", "origin", self.branch)
         if pull.returncode != 0:
             raise self._failure("git pull --rebase", pull)
-        self._run("config", "user.name", "Recruiting Radar Bot")
-        self._run("config", "user.email", "recruiting-radar@users.noreply.github.com")
         return GitResult(False, True, "Vault checkout ready")
 
     def sync_remote(self) -> GitResult:
