@@ -52,6 +52,21 @@ def test_known_ids_are_scoped_by_source(settings):
     assert service._known_ids("kofia") == set()
 
 
+def test_collect_all_runs_only_explicitly_enabled_sources(settings):
+    configured = replace(settings, enabled_sources=("kvca", "vcs"))
+    service = RadarService(configured)
+    called = []
+
+    async def collect_source(source, *, refresh=False):
+        called.append((source, refresh))
+        return {"source": source}
+
+    service.collect_source = collect_source
+    result = asyncio.run(service.collect_all(refresh=True))
+    assert [row["source"] for row in result] == ["kvca", "vcs"]
+    assert called == [("kvca", True), ("vcs", True)]
+
+
 def test_partial_ingestion_preserves_previous_watermark(settings):
     settings.state_path.parent.mkdir(parents=True, exist_ok=True)
     update_source_state(settings.state_path, "kvca", success=True, seen_ids=["old"])

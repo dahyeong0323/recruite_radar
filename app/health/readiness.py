@@ -16,4 +16,6 @@ def readiness(settings) -> tuple[bool, list[str]]:
             reasons.append("source state is missing")
         if not settings.git_url:
             reasons.append("VAULT_GIT_URL is missing")
+        if "saramin" in settings.enabled_sources and not settings.saramin_access_key:
+            reasons.append("SARAMIN_ACCESS_KEY is missing for enabled source")
     return not reasons, reasons

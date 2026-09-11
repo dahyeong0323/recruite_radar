@@ -115,7 +115,7 @@ class RadarService:
 
     async def collect_all(self, *, refresh: bool = False) -> list[dict]:
         results = []
-        for source in ("kvca", "vcs", "kofia", "saramin"):
+        for source in self.settings.enabled_sources:
             results.append(await self.collect_source(source, refresh=refresh))
         write_health_note(self.settings.radar_root, state=health_state(self.settings.state_path), source_rows=self._health_rows())
         return results

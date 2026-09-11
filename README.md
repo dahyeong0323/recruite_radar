@@ -50,6 +50,8 @@ KVCA, VCS, KOFIA, and Saramin remain isolated sources. Known IDs are source-scop
 
 `SARAMIN_DAILY_LIMIT` defaults to 470. `SARAMIN_KEYWORDS_PER_RUN` defaults to 8 and rotates the keyword window between runs to reduce repeated broad queries while preserving coverage. A partial stream or item failure records a degraded run and does not advance the source watermark.
 
+`ENABLED_SOURCES` defaults to `kvca,vcs,kofia,saramin`. Disable a source explicitly when its production credential is unavailable; for example, use `kvca,vcs,kofia` until a Saramin key is provisioned. Readiness fails closed when Saramin is enabled without `SARAMIN_ACCESS_KEY`.
+
 ## Telegram
 
 Outgoing delivery requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Immediate A alerts use `_System/notification_outbox.json`: a durable `sending` reservation is pushed before delivery, explicit failures remain retryable, and delivered IDs are not emitted again after restart. Daily B digest receipts live in `_System/digest_state.json`, so unchanged jobs are sent once.
@@ -110,6 +112,7 @@ Zero successful source runs are `DEGRADED`, not healthy.
 | `SARAMIN_ACCESS_KEY` | Saramin Open API credential. |
 | `SARAMIN_DAILY_LIMIT` | Persistent daily safety ceiling; default 470. |
 | `SARAMIN_KEYWORDS_PER_RUN` | Rotating keyword window size; default 8. |
+| `ENABLED_SOURCES` | Comma-separated scheduled sources; defaults to all four supported sources. |
 | `OPENAI_API_KEY` | Optional Responses API key. |
 | `OPENAI_MODEL_CLASSIFIER` | Optional classifier model; deterministic fallback remains enabled. |
 | `TZ` | Application timezone; default `Asia/Seoul`. |
