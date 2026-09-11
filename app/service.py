@@ -19,6 +19,7 @@ from app.vault.git_sync import GitSync
 from app.vault.index import load_index
 from app.vault.status import mark_alerted
 from app.vault.repository import GLOBAL_VAULT_LOCK
+from app.vault.operation_lock import OperationInProgress, operation_lock
 from app.telegram.outbox import load_state as load_delivery_state, set_delivery
 from app.utils.clock import now, today
 from app.utils.security import safe_exception
@@ -63,6 +64,13 @@ class RadarService:
         return (data.get("sources", {}).get(source) or {}).get("last_success_at")
 
     async def collect_source(self, source: str, *, refresh: bool = False) -> dict:
+        try:
+            async with operation_lock(self.settings.vault_root):
+                return await self._collect_source_unlocked(source, refresh=refresh)
+        except OperationInProgress as error:
+            return {"source": source, "error": safe_exception(source, error, self.settings.secrets)}
+
+    async def _collect_source_unlocked(self, source: str, *, refresh: bool = False) -> dict:
         collector = self._collector(source)
         try:
             if not self.settings.dry_run:
@@ -130,6 +138,13 @@ class RadarService:
         return await self.collect_all(refresh=True)
 
     async def backfill(self, source: str, from_date) -> dict:
+        try:
+            async with operation_lock(self.settings.vault_root):
+                return await self._backfill_unlocked(source, from_date)
+        except OperationInProgress as error:
+            return {"source": source, "error": safe_exception(source, error, self.settings.secrets)}
+
+    async def _backfill_unlocked(self, source: str, from_date) -> dict:
         if not self.settings.dry_run:
             async with GLOBAL_VAULT_LOCK:
                 sync_result = self._git().sync_remote()
@@ -211,6 +226,13 @@ class RadarService:
         return len(sent)
 
     async def send_digest(self) -> None:
+        try:
+            async with operation_lock(self.settings.vault_root):
+                await self._send_digest_unlocked()
+        except OperationInProgress:
+            return
+
+    async def _send_digest_unlocked(self) -> None:
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return
         entries = load_index(self.settings.index_path)
@@ -248,6 +270,13 @@ class RadarService:
             await client.close()
 
     async def send_deadline_reminders(self) -> None:
+        try:
+            async with operation_lock(self.settings.vault_root):
+                await self._send_deadline_reminders_unlocked()
+        except OperationInProgress:
+            return
+
+    async def _send_deadline_reminders_unlocked(self) -> None:
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return
         entries = load_index(self.settings.index_path)

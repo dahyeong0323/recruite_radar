@@ -29,6 +29,8 @@ Production is explicit: set `DRY_RUN=false`, a writable absolute `VAULT_ROOT`, `
 
 For private repositories, prefer a repository-scoped write-enabled SSH deploy key via `SSH_DEPLOY_KEY` and an SSH `VAULT_GIT_URL`. A fine-grained `GITHUB_TOKEN` limited to the Vault repository is also supported for HTTPS. Authentication is passed through process environment config; never embed credentials in `VAULT_GIT_URL`. Automation commits use `git commit --only` scoped to `VAULT_RELATIVE_PATH`, so unrelated staged files are not included. A dedicated server-side clone is still strongly recommended.
 
+Collection operations also use a cross-process file lock keyed by `VAULT_ROOT`. This prevents the HTTP scheduler and an operator CLI command in the same container from mutating the checkout concurrently; a second operation fails safely instead of corrupting Git state.
+
 Railway example:
 
 ```env
