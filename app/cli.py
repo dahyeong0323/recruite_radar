@@ -13,7 +13,7 @@ from app.pipeline.update import IngestionPipeline
 from app.service import RadarService
 from app.vault.dashboard import write_dashboards
 from app.vault.index import rebuild_index
-from app.vault.git_sync import ensure_vault_checkout
+from app.vault.git_sync import GitSync, ensure_vault_checkout
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -62,21 +62,46 @@ def load_fixture(path: Path) -> list[SourceItem]:
     return [SourceItem.model_validate(row) for row in rows]
 
 
+def _git(settings) -> GitSync:
+    return GitSync(
+        settings.vault_root,
+        branch=settings.branch,
+        radar_relative_path=settings.vault_relative_path,
+        dry_run=settings.dry_run,
+        git_url=settings.git_url,
+        github_token=settings.github_token,
+        ssh_deploy_key=settings.ssh_deploy_key,
+    )
+
+
+def _persist_cli(settings, message: str) -> None:
+    if settings.dry_run:
+        return
+    result = _git(settings).commit_and_push(message)
+    if not result.pushed:
+        raise RuntimeError(result.message)
+
+
 async def run(args) -> int:
     settings = load_settings(getattr(args, "project_root", None))
     if not settings.dry_run:
         ensure_vault_checkout(settings)
-    bootstrap(settings)
     if args.command == "bootstrap-vault":
+        bootstrap(settings)
+        _persist_cli(settings, "radar: bootstrap Vault structure")
         print(settings.radar_root)
         return 0
+    if settings.dry_run:
+        bootstrap(settings)
     if args.command == "rebuild-index":
         entries = rebuild_index(settings.radar_root)
         write_dashboards(settings.radar_root, entries)
+        _persist_cli(settings, "radar: rebuild index and dashboards")
         print(f"rebuilt {len(entries)} jobs")
         return 0
     if args.command == "ingest-fixtures":
         metrics = await IngestionPipeline(settings).ingest(load_fixture(args.fixture))
+        _persist_cli(settings, "radar: ingest fixture batch")
         print(metrics.model_dump_json(indent=2))
         return 0
     if args.command == "collect":

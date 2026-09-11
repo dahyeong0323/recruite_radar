@@ -140,6 +140,30 @@ def test_independent_scheduled_cli_command_executes(settings, monkeypatch, comma
     assert called == [method]
 
 
+def test_production_collect_does_not_dirty_checkout_with_implicit_bootstrap(settings, monkeypatch):
+    from dataclasses import replace
+
+    configured = replace(settings, dry_run=False, git_url="https://example.test/vault.git")
+    called = []
+
+    class FakeService:
+        def __init__(self, value):
+            self.settings = value
+
+        async def collect_source(self, source):
+            called.append(("collect", source))
+            return {"source": source}
+
+    monkeypatch.setattr(cli_module, "load_settings", lambda root=None: configured)
+    monkeypatch.setattr(cli_module, "ensure_vault_checkout", lambda value: called.append(("ensure", value.branch)))
+    monkeypatch.setattr(cli_module, "bootstrap", lambda value: called.append(("bootstrap", value.branch)))
+    monkeypatch.setattr(cli_module, "RadarService", FakeService)
+
+    args = SimpleNamespace(command="collect", source="kvca", project_root=None)
+    assert asyncio.run(run(args)) == 0
+    assert called == [("ensure", configured.branch), ("collect", "kvca")]
+
+
 def test_batch_rebuilds_index_once_at_end(settings, monkeypatch):
     pipeline = IngestionPipeline(settings)
     calls = 0
