@@ -33,6 +33,7 @@ def _entry_from_note(path: Path, radar_root: Path, errors: list[str] | None = No
         file_path=relative,
         source_ids=metadata.get("source_ids") or {},
         fingerprint=str(metadata.get("fingerprint") or ""),
+        material_fingerprint=str(metadata.get("material_fingerprint") or ""),
         company=metadata.get("company"),
         title=str(metadata["title"]),
         sector=str(metadata.get("sector") or "Unknown"),

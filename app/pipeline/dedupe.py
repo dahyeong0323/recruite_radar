@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from difflib import SequenceMatcher
+import hashlib
+import json
 import re
 
 from app.models import IndexEntry, SourceItem
@@ -32,6 +34,23 @@ def deadline_bucket(deadline: date | datetime | None) -> str:
 def item_fingerprint(item: SourceItem) -> str:
     normalized = normalize_item(item)
     return "|".join((normalized.company_normalized or "unknown", normalized.title_normalized, deadline_bucket(item.deadline)))
+
+
+def material_fingerprint(item: SourceItem) -> str:
+    """Hash only posting content that should make a delivered digest eligible again."""
+    payload = {
+        "active": item.active,
+        "application_start": item.application_start.isoformat() if item.application_start else None,
+        "application_urls": sorted(str(url) for url in item.raw_metadata.get("application_urls", []) if url),
+        "attachments": sorted((attachment.name, attachment.url or "") for attachment in item.attachments),
+        "body_text": clean_text(item.body_text),
+        "company": normalize_company(item.company_raw or "", ALIASES),
+        "deadline": item.deadline.isoformat() if item.deadline else None,
+        "source_url": item.source_url.rstrip("/"),
+        "title": normalize_title(item.title_raw),
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def canonical_id(item: SourceItem) -> str:

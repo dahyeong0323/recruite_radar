@@ -130,6 +130,7 @@ class IndexEntry(BaseModel):
     file_path: str
     source_ids: dict[str, str | None] = Field(default_factory=dict)
     fingerprint: str
+    material_fingerprint: str = ""
     company: str | None = None
     title: str
     sector: str = "Unknown"

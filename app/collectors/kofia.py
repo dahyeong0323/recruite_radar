@@ -96,15 +96,28 @@ class KofiaCollector(CollectorBase):
             raw_metadata={"list_row": entry.row_text, "application_urls": app_urls},
         )
 
-    async def collect(self, *, known_ids: set[str] | None = None, refresh_ids: set[str] | None = None, overlap_start: datetime | None = None, max_pages: int = 10, backfill: bool = False) -> list[SourceItem]:
+    async def collect(self, *, known_ids: set[str] | None = None, refresh_ids: set[str] | None = None, overlap_start: datetime | None = None, max_pages: int = 10, backfill: bool = False, refresh_only: bool = False) -> list[SourceItem]:
         known_ids = known_ids or set()
         refresh_ids = refresh_ids or set()
         items: list[SourceItem] = []
         consecutive_seen = 0
+        pending_refresh = set(refresh_ids)
+        encountered_ids: set[str] = set()
         for page in range(1, max_pages + 1):
             list_url = self.list_url_template.format(page=page)
-            listing = self.parse_list(await self.get_text(list_url), list_url)
-            for entry in listing:
+            try:
+                listing = self.parse_list(await self.get_text(list_url), list_url)
+            except StructuralDriftError:
+                if refresh_only and page > 1:
+                    break
+                raise
+            new_entries = [entry for entry in listing if entry.source_id not in encountered_ids]
+            if not new_entries:
+                break
+            encountered_ids.update(entry.source_id for entry in new_entries)
+            for entry in new_entries:
+                if refresh_only and entry.source_id not in pending_refresh:
+                    continue
                 if overlap_start and entry.posted_at and entry.posted_at < overlap_start and entry.source_id not in refresh_ids:
                     return items
                 if backfill and not any(term.casefold() in f"{entry.title} {entry.company or ''} {entry.row_text}".casefold() for term in ("투자", "심사", "VC", "PE", "IB", "M&A", "기업금융", "대체투자", "Research", "RA")):
@@ -120,4 +133,10 @@ class KofiaCollector(CollectorBase):
                 except Exception as error:  # noqa: BLE001 - preserve the list-level source fact
                     self.errors.append(f"{entry.source_id}: {type(error).__name__}: {error}")
                     items.append(self.fallback_item(entry, error))
+                if refresh_only:
+                    pending_refresh.discard(entry.source_id)
+                    if not pending_refresh:
+                        return items
+        if refresh_only and pending_refresh:
+            self.errors.append(f"{len(pending_refresh)} refresh target(s) not found")
         return items

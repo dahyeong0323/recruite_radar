@@ -18,4 +18,8 @@ def readiness(settings) -> tuple[bool, list[str]]:
             reasons.append("VAULT_GIT_URL is missing")
         if "saramin" in settings.enabled_sources and not settings.saramin_access_key:
             reasons.append("SARAMIN_ACCESS_KEY is missing for enabled source")
+        if settings.telegram_bot_token and not settings.telegram_chat_id:
+            reasons.append("TELEGRAM_CHAT_ID is missing while Telegram is enabled")
+        if settings.telegram_bot_token and not settings.telegram_webhook_secret:
+            reasons.append("TELEGRAM_WEBHOOK_SECRET is missing while Telegram is enabled")
     return not reasons, reasons

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,17 +32,44 @@ async def update_source_state_async(state_path: Path, source: str, *, success: b
         return update_source_state(state_path, source, success=success, seen_ids=seen_ids, newest_timestamp=newest_timestamp)
 
 
-def health_state(state_path: Path, *, git_push_failures: int = 0, telegram_failures: int = 0, pending_classifications: int = 0) -> str:
+def health_state(
+    state_path: Path, *, enabled_sources: tuple[str, ...] | list[str] | None = None,
+    index_errors_path: Path | None = None, git_push_failures: int = 0,
+    telegram_failures: int = 0, pending_classifications: int = 0,
+    as_of: datetime | None = None,
+) -> str:
     if not state_path.exists():
         return "DEGRADED"
     data = json.loads(state_path.read_text(encoding="utf-8"))
-    sources = data.get("sources", {})
+    all_sources = data.get("sources", {})
+    source_names = list(enabled_sources) if enabled_sources is not None else list(all_sources)
+    sources = {source: all_sources.get(source, {}) for source in source_names}
     if not sources or not any(value.get("last_success_at") for value in sources.values()):
         return "DEGRADED"
     failures = [value.get("consecutive_failures", 0) for value in sources.values()]
     if git_push_failures >= 3 or telegram_failures >= 3 or pending_classifications > 0 and max(failures or [0]) >= 2:
         return "FAILED"
-    if any(value >= 1 for value in failures) or pending_classifications > 0:
+    current = as_of or now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    ages: list[timedelta | None] = []
+    for value in sources.values():
+        try:
+            stamp = datetime.fromisoformat(str(value.get("last_success_at", "")).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            ages.append(current.astimezone(timezone.utc) - stamp.astimezone(timezone.utc))
+        except (TypeError, ValueError):
+            ages.append(None)
+    if any(age is not None and age > timedelta(hours=12) for age in ages):
+        return "FAILED"
+    malformed = 0
+    if index_errors_path and index_errors_path.exists():
+        try:
+            malformed = int(json.loads(index_errors_path.read_text(encoding="utf-8")).get("count", 0))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            malformed = 1
+    if any(age is None or age > timedelta(hours=5) for age in ages) or any(value >= 1 for value in failures) or pending_classifications > 0 or malformed > 0:
         return "DEGRADED"
     return "HEALTHY"
 

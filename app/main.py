@@ -49,7 +49,7 @@ app = FastAPI(title="Korea Finance Recruiting Radar", lifespan=lifespan)
 async def health() -> dict:
     ready, reasons = readiness(settings)
     return {
-        "status": health_state(settings.state_path), "ready": ready,
+        "status": service._health_state(), "ready": ready,
         "dry_run": settings.dry_run, "reasons": reasons, "sources": service._health_rows(),
     }
 
@@ -69,6 +69,8 @@ async def readyz() -> dict:
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: str | None = Header(default=None)) -> dict:
+    if not settings.dry_run and settings.telegram_bot_token and not settings.telegram_webhook_secret:
+        raise HTTPException(status_code=503, detail="telegram webhook secret is not configured")
     if settings.telegram_webhook_secret and x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
         raise HTTPException(status_code=403, detail="invalid webhook secret")
     payload = await request.json()
@@ -85,7 +87,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
                 return {"ok": True, "ignored": "unauthorized chat"}
             text = str(message.get("text", "")).split()[0] if message.get("text") else ""
             if text:
-                await handle_command(client, chat_id, text, load_index(settings.index_path), health_state(settings.state_path))
+                await handle_command(client, chat_id, text, load_index(settings.index_path), service._health_state())
     finally:
         await client.close()
     return {"ok": True}

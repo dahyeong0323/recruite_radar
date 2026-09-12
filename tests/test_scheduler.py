@@ -11,4 +11,4 @@ class Service:
 def test_required_jobs_are_scheduled():
     scheduler = configure_scheduler(Service())
     assert {job.id for job in scheduler.get_jobs()} == {"collect-all", "refresh-active", "daily-digest", "deadline-reminders"}
-    scheduler.shutdown(wait=False)
+    assert scheduler.running is False

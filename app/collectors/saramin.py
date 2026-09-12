@@ -161,7 +161,7 @@ class SaraminCollector(CollectorBase):
                 break
             for job in jobs:
                 item = self._source_item(job, keyword)
-                if item and (item.source_id not in known_ids or item.source_id in refresh_ids):
+                if item and (filter_name == "updated_min" or item.source_id not in known_ids or item.source_id in refresh_ids):
                     results[item.source_id] = item
 
     async def collect(

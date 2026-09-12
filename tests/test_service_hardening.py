@@ -1,7 +1,7 @@
 import asyncio
 import json
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +13,7 @@ from app.health.monitor import update_source_state, write_health_note
 from app.models import ClassificationResult, IndexEntry, RunMetrics, SourceItem
 from app.pipeline.classify import rule_based_classify
 from app.service import RadarService
-from app.telegram.outbox import load_state
+from app.telegram.outbox import delivery_is_reserved, load_state
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter, render_frontmatter
 from app.vault.index import rebuild_index
 from app.vault.note_writer import write_job_note
@@ -50,6 +50,13 @@ def test_known_ids_are_scoped_by_source(settings):
     service = RadarService(settings)
     assert service._known_ids("kvca") == {"3335"}
     assert service._known_ids("kofia") == set()
+
+
+def test_immediate_alert_lookup_requires_matching_source_and_id(settings):
+    item = source_item(source="kvca", source_id="collision")
+    wrong = IndexEntry(id="wrong", file_path="wrong.md", source_ids={"vcs": "collision", "kvca": "other"}, fingerprint="x", title="wrong")
+    right = IndexEntry(id="right", file_path="right.md", source_ids={"kvca": "collision"}, fingerprint="y", title="right")
+    assert RadarService._entry_for_item([wrong, right], item).id == "right"
 
 
 def test_collect_all_runs_only_explicitly_enabled_sources(settings):
@@ -248,6 +255,59 @@ def test_daily_digest_does_not_repeat_unchanged_b_job(settings, monkeypatch):
 
     asyncio.run(run())
     assert len(FakeTelegram.messages) == 1
+
+
+def test_daily_digest_does_not_repeat_after_unchanged_refresh(settings, monkeypatch):
+    item, path, metadata = _make_priority_note(settings, "B")
+    prod = replace(settings, dry_run=False, telegram_bot_token="fake-token", telegram_chat_id="1")
+    FakeTelegram.messages = []
+    FakeTelegram.fail = False
+    monkeypatch.setattr(service_module, "TelegramClient", FakeTelegram)
+
+    async def run():
+        service = RadarService(prod)
+        async def persist(message): return True
+        service._persist = persist
+        await service.send_digest()
+        previous, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+        refreshed = item.model_copy(update={"discovered_at": item.discovered_at + timedelta(days=1)})
+        write_job_note(settings.radar_root, refreshed, rule_based_classify(refreshed), job_id=metadata["id"], existing_metadata=previous, existing_body=body)
+        refreshed_metadata, refreshed_body = parse_frontmatter(path.read_text(encoding="utf-8"))
+        refreshed_metadata["priority"] = "B"
+        atomic_write_text(path, render_frontmatter(refreshed_metadata) + "\n" + refreshed_body)
+        rebuild_index(settings.radar_root)
+        await service.send_digest()
+
+    asyncio.run(run())
+    assert len(FakeTelegram.messages) == 1
+
+
+def test_stale_sending_alert_is_retried(settings, monkeypatch):
+    item, _, metadata = _make_priority_note(settings, "A")
+    outbox = settings.radar_root / "_System" / "notification_outbox.json"
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    atomic_write_text(outbox, json.dumps({"jobs": {metadata["id"]: {"state": "sending", "updated_at": stale}}}))
+    prod = replace(settings, dry_run=False, telegram_bot_token="fake-token", telegram_chat_id="1")
+    FakeTelegram.messages = []
+    FakeTelegram.fail = False
+    monkeypatch.setattr(service_module, "TelegramClient", FakeTelegram)
+
+    async def run():
+        service = RadarService(prod)
+        async def persist(message): return True
+        service._persist = persist
+        return await service._send_immediate_alerts([item])
+
+    assert asyncio.run(run()) == 1
+    assert len(FakeTelegram.messages) == 1
+
+
+def test_fresh_sending_alert_keeps_its_lease():
+    current = datetime.now(timezone.utc)
+    row = {"state": "sending", "updated_at": (current - timedelta(minutes=9)).isoformat()}
+    assert delivery_is_reserved(row, as_of=current) is True
+    row["updated_at"] = (current - timedelta(minutes=10, seconds=1)).isoformat()
+    assert delivery_is_reserved(row, as_of=current) is False
 
 
 def test_secrets_are_redacted_from_health_and_run_log(settings):

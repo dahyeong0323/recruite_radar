@@ -1,5 +1,8 @@
 # Korea Finance Recruiting Radar
 
+Dependencies are locked in `uv.lock`. CI runs the full test suite, byte-compilation,
+and a production Docker build for every push and pull request.
+
 An Obsidian-canonical recruiting intelligence service for Korean VC, PE, and IB opportunities. Collectors normalize source facts, conservative dedupe joins only strong matches, deterministic rules remain available when OpenAI classification fails, and generated Markdown is committed to a dedicated Vault checkout.
 
 ## Canonical data model

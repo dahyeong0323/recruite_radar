@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,3 +29,22 @@ def set_delivery(path: Path, job_id: str, state: str, *, fingerprint: str | None
     data.setdefault("jobs", {})[job_id] = row
     data["updated_at"] = row["updated_at"]
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def delivery_is_reserved(row: dict[str, Any], *, as_of: datetime | None = None, lease: timedelta = timedelta(minutes=10)) -> bool:
+    """Delivered rows are final; sending rows block only while their lease is fresh."""
+    state = row.get("state")
+    if state == "delivered":
+        return True
+    if state != "sending":
+        return False
+    try:
+        updated_at = datetime.fromisoformat(str(row.get("updated_at", "")).replace("Z", "+00:00"))
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return False
+    current = as_of or now()
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(timezone.utc) - updated_at.astimezone(timezone.utc) < lease

@@ -105,6 +105,22 @@ def test_production_readiness_requires_git_checkout_and_state(settings):
     assert any("state" in reason for reason in reasons)
 
 
+def test_production_readiness_requires_telegram_chat_and_webhook_secret(settings):
+    from dataclasses import replace
+    prod = replace(
+        settings, dry_run=False, git_url="https://example.test/vault.git",
+        telegram_bot_token="configured", telegram_chat_id=None, telegram_webhook_secret=None,
+    )
+    prod.vault_root.mkdir(parents=True, exist_ok=True)
+    (prod.vault_root / ".git").mkdir()
+    prod.state_path.parent.mkdir(parents=True, exist_ok=True)
+    prod.state_path.write_text('{"sources": {}}', encoding="utf-8")
+    ready, reasons = readiness(prod)
+    assert ready is False
+    assert any("TELEGRAM_CHAT_ID" in reason for reason in reasons)
+    assert any("TELEGRAM_WEBHOOK_SECRET" in reason for reason in reasons)
+
+
 @pytest.mark.parametrize("command", ["collect-all", "refresh-active", "digest", "deadline"])
 def test_independent_scheduled_cli_commands_exist(command):
     args = _parser().parse_args([command])

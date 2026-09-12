@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -7,7 +8,7 @@ import httpx
 from app.collectors.kofia import KofiaCollector
 from app.collectors.kvca import KvcaCollector
 from app.collectors.vcs import VcsCollector
-from app.collectors.base import StructuralDriftError
+from app.collectors.base import ListEntry, StructuralDriftError
 from app.utils.text import infer_company_from_title
 
 
@@ -107,3 +108,22 @@ def test_vcs_repeated_page_stops_without_duplicate_detail_fetches(settings):
     assert [item.source_id for item in items] == ["vcs-3335"]
     assert collector.get_text.await_count == 2
     assert collector.get_detail_text.await_count == 1
+
+
+def test_refresh_scans_past_twenty_known_rows_to_find_old_target(settings):
+    collector = KvcaCollector(settings)
+    old = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    first_page = [ListEntry(source_id=str(index), title=f"known {index}", url=f"https://kvca.test/{index}", row_text="known", posted_at=old) for index in range(20)]
+    target = ListEntry(source_id="old-target", title="투자본부 인턴", url="https://kvca.test/old-target", row_text="old target", posted_at=old)
+    collector.get_text = AsyncMock(side_effect=lambda url: url)
+    collector.parse_list = lambda html, page_url: first_page if "page=1" in page_url else [target]
+    collector.get_detail_text = AsyncMock(return_value=(FIXTURES / "kvca/detail.html").read_text(encoding="utf-8"))
+
+    items = asyncio.run(collector.collect(
+        known_ids={*(str(index) for index in range(20)), "old-target"},
+        refresh_ids={"old-target"}, overlap_start=datetime.now(timezone.utc),
+        max_pages=2, refresh_only=True,
+    ))
+
+    assert [item.source_id for item in items] == ["old-target"]
+    assert collector.get_text.await_count == 2

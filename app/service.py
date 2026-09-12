@@ -20,7 +20,7 @@ from app.vault.index import load_index
 from app.vault.status import mark_alerted
 from app.vault.repository import GLOBAL_VAULT_LOCK
 from app.vault.operation_lock import OperationInProgress, operation_lock
-from app.telegram.outbox import load_state as load_delivery_state, set_delivery
+from app.telegram.outbox import delivery_is_reserved, load_state as load_delivery_state, set_delivery
 from app.utils.clock import now, today
 from app.utils.security import safe_exception
 
@@ -57,11 +57,22 @@ class RadarService:
         selected = [entry for entry in entries if entry.priority in {"A", "B"} or entry.user_status in {"interested", "will_apply", "applied"}]
         return {entry.source_ids.get(source) for entry in selected if entry.source_ids.get(source)}
 
+    @staticmethod
+    def _entry_for_item(entries, item: SourceItem):
+        return next((entry for entry in entries if entry.source_ids.get(item.source) == item.source_id), None)
+
     def _last_success(self, source: str) -> str | None:
         if not self.settings.state_path.exists():
             return None
         data = json.loads(self.settings.state_path.read_text(encoding="utf-8"))
         return (data.get("sources", {}).get(source) or {}).get("last_success_at")
+
+    def _health_state(self) -> str:
+        return health_state(
+            self.settings.state_path,
+            enabled_sources=self.settings.enabled_sources,
+            index_errors_path=self.settings.radar_root / "_System" / "index_errors.json",
+        )
 
     async def collect_source(self, source: str, *, refresh: bool = False) -> dict:
         try:
@@ -79,15 +90,19 @@ class RadarService:
                 if not sync_result.pushed:
                     raise RuntimeError(sync_result.message)
             async with collector:
+                refresh_ids = self._refresh_ids(source) if refresh else set()
                 kwargs = {
                     "known_ids": self._known_ids(source),
-                    "refresh_ids": self._refresh_ids(source) if refresh else set(),
-                    "overlap_start": now(self.settings.timezone) - timedelta(days=7),
+                    "refresh_ids": refresh_ids,
+                    "overlap_start": None if refresh else now(self.settings.timezone) - timedelta(days=7),
                 }
                 if source == "saramin":
                     kwargs["published_min"] = self._last_success(source)
                     kwargs["updated_min"] = self._last_success(source)
-                items = await collector.collect(**kwargs)
+                elif refresh and refresh_ids:
+                    kwargs["refresh_only"] = True
+                    kwargs["max_pages"] = 100
+                items = [] if refresh and not refresh_ids else await collector.collect(**kwargs)
             metrics = await self.pipeline.ingest(items, source=source)
             metrics.list_items_seen = len(items)
             metrics.new_source_items = len(items)
@@ -116,7 +131,7 @@ class RadarService:
                 health_notes.append(f"{source}: partial run; watermark preserved.")
             write_health_note(
                 self.settings.radar_root,
-                state="DEGRADED" if health_notes else health_state(self.settings.state_path),
+                state="DEGRADED" if health_notes else self._health_state(),
                 source_rows=self._health_rows(),
                 notes=health_notes,
                 secrets=self.settings.secrets,
@@ -127,7 +142,7 @@ class RadarService:
         except Exception as error:  # source isolation is intentional
             await update_source_state_async(self.settings.state_path, source, success=False)
             safe = safe_exception(source, error, self.settings.secrets)
-            write_health_note(self.settings.radar_root, state=health_state(self.settings.state_path), source_rows=self._health_rows(), notes=[safe], secrets=self.settings.secrets)
+            write_health_note(self.settings.radar_root, state=self._health_state(), source_rows=self._health_rows(), notes=[safe], secrets=self.settings.secrets)
             await self._persist(f"radar: record {source} failure")
             return {"source": source, "error": safe}
 
@@ -182,14 +197,14 @@ class RadarService:
         sent: set[str] = set()
         try:
             for item in items:
-                entry = next((candidate for candidate in entries if item.source_id in candidate.source_ids.values()), None)
+                entry = self._entry_for_item(entries, item)
                 if not entry or entry.id in sent or entry.priority != "A" or entry.status != "active":
                     continue
                 frontmatter, _ = parse_frontmatter((self.settings.vault_root / entry.file_path).read_text(encoding="utf-8"))
                 if frontmatter.get("telegram_alerted_at"):
                     continue
-                delivery = (load_delivery_state(outbox_path).get("jobs", {}).get(entry.id) or {}).get("state")
-                if delivery in {"sending", "delivered"}:
+                delivery = load_delivery_state(outbox_path).get("jobs", {}).get(entry.id) or {}
+                if delivery_is_reserved(delivery, as_of=now()):
                     continue
                 source_item = SourceItem(
                     source=item.source,
@@ -250,7 +265,7 @@ class RadarService:
         selected = [
             entry for entry in entries
             if entry.status == "active" and entry.priority == "B" and entry.user_status != "ignored"
-            and (digest_state.get(entry.id) or {}).get("fingerprint") != f"{entry.fingerprint}:{entry.updated_at}"
+            and (digest_state.get(entry.id) or {}).get("fingerprint") != (entry.material_fingerprint or entry.fingerprint)
         ]
         pending_a = []
         for entry in entries:
@@ -273,7 +288,7 @@ class RadarService:
             lines.extend(["", f"통계: B {len(selected)}개 · A 알림대기 {len(pending_a)}개 · 전체 active {sum(1 for entry in entries if entry.status == 'active')}개"])
             await client.send_message(self.settings.telegram_chat_id, "\n".join(lines))
             for entry in selected[:20]:
-                set_delivery(digest_path, entry.id, "delivered", fingerprint=f"{entry.fingerprint}:{entry.updated_at}")
+                set_delivery(digest_path, entry.id, "delivered", fingerprint=entry.material_fingerprint or entry.fingerprint)
             await self._persist("radar: record daily digest delivery")
         finally:
             await client.close()

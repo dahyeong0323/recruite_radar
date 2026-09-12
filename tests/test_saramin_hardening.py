@@ -54,6 +54,21 @@ def test_published_and_updated_streams_are_separate_and_union(settings):
     assert {query["sort"] for query in queries} == {"pd", "ud"}
 
 
+def test_updated_stream_reingests_known_ids_but_published_stream_skips_them(settings):
+    async def handler(request):
+        return httpx.Response(200, json=_payload("known"))
+
+    async def run():
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        async with SaraminCollector(settings, client=client, keywords=["투자"]) as collector:
+            return await collector.collect(
+                known_ids={"known"}, max_pages=1,
+                published_min="2026-09-01", updated_min="2026-09-01",
+            )
+
+    assert [item.source_id for item in asyncio.run(run())] == ["known"]
+
+
 def test_one_saramin_stream_can_succeed_partially(settings):
     async def handler(request):
         if "published_min" in request.url.params:
