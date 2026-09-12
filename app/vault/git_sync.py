@@ -85,6 +85,22 @@ class GitSync:
         refspec = f"+refs/heads/{self.branch}:refs/remotes/origin/{self.branch}"
         return self._run("fetch", "origin", refspec)
 
+    def _push_local_ahead_commits(self) -> GitResult:
+        """Recover commits that were created locally but never reached origin."""
+        ahead = self._run("rev-list", "--count", f"origin/{self.branch}..HEAD")
+        if ahead.returncode != 0:
+            return GitResult(False, False, "could not inspect unpushed commits")
+        try:
+            count = int(ahead.stdout.strip() or "0")
+        except ValueError:
+            return GitResult(False, False, "invalid ahead commit count")
+        if count == 0:
+            return GitResult(False, True, "no unpushed commits")
+        push = self._run("push", "origin", self.branch)
+        if push.returncode != 0:
+            return GitResult(False, False, "could not recover unpushed commits")
+        return GitResult(False, True, f"recovered {count} unpushed commit(s)")
+
     def _recover_managed_changes(self) -> None:
         """Durably preserve writes left by an interrupted automation process.
 
@@ -154,6 +170,9 @@ class GitSync:
         pull = self._run("pull", "--rebase", "origin", self.branch)
         if pull.returncode != 0:
             raise self._failure("git pull --rebase", pull)
+        ahead_recovery = self._push_local_ahead_commits()
+        if not ahead_recovery.pushed:
+            raise VaultCheckoutError(ahead_recovery.message)
         return GitResult(False, True, "Vault checkout ready")
 
     def sync_remote(self) -> GitResult:
@@ -169,7 +188,7 @@ class GitSync:
         if status.returncode != 0:
             return GitResult(False, False, "git status failed")
         if not status.stdout.strip():
-            return GitResult(False, True, "no changes")
+            return self._push_local_ahead_commits()
         add = self._run("add", "--", path)
         if add.returncode != 0:
             return GitResult(False, False, "git add failed")

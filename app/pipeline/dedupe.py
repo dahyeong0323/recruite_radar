@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from difflib import SequenceMatcher
 import hashlib
 import json
 import re
+from typing import Any
 
 from app.models import IndexEntry, SourceItem
 from app.pipeline.normalize import ALIASES, NormalizedItem, normalize_item
@@ -36,20 +38,33 @@ def item_fingerprint(item: SourceItem) -> str:
     return "|".join((normalized.company_normalized or "unknown", normalized.title_normalized, deadline_bucket(item.deadline)))
 
 
-def material_fingerprint(item: SourceItem) -> str:
-    """Hash only posting content that should make a delivered digest eligible again."""
+def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
+    """Hash the merged canonical material state used for digest resend decisions."""
+    attachments: list[tuple[str, str]] = []
+    for raw in metadata.get("attachments") or []:
+        if isinstance(raw, dict):
+            attachments.append((clean_text(str(raw.get("name") or "")), str(raw.get("url") or "").rstrip("/")))
+
     payload = {
-        "active": item.active,
-        "application_start": item.application_start.isoformat() if item.application_start else None,
-        "application_urls": sorted(str(url) for url in item.raw_metadata.get("application_urls", []) if url),
-        "attachments": sorted((attachment.name, attachment.url or "") for attachment in item.attachments),
-        "body_text": clean_text(item.body_text),
-        "company": normalize_company(item.company_raw or "", ALIASES),
-        "deadline": item.deadline.isoformat() if item.deadline else None,
-        "source_url": item.source_url.rstrip("/"),
-        "title": normalize_title(item.title_raw),
+        "status": metadata.get("status"),
+        "company": metadata.get("company_normalized") or metadata.get("company"),
+        "title": normalize_title(str(metadata.get("title") or "")),
+        "deadline": str(metadata.get("deadline") or ""),
+        "application_start": str(metadata.get("application_start") or ""),
+        "application_urls": sorted(str(url).rstrip("/") for url in (metadata.get("application_urls") or []) if url),
+        "attachments": sorted(attachments),
+        "location": metadata.get("location"),
+        "department": metadata.get("department"),
+        "employment_type": metadata.get("employment_type"),
+        "seniority": metadata.get("seniority"),
+        "role_family": metadata.get("role_family"),
+        "front_office": metadata.get("front_office"),
+        "student_eligible": metadata.get("student_eligible"),
+        "conversion_possible": metadata.get("conversion_possible"),
+        "experience_min": metadata.get("experience_min"),
+        "experience_max": metadata.get("experience_max"),
     }
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
