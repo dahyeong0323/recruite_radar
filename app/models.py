@@ -145,6 +145,7 @@ class IndexEntry(BaseModel):
     deadline: date | None = None
     posted_at: date | None = None
     updated_at: datetime | None = None
+    source_urls: list[str] = Field(default_factory=list)
     application_urls: list[str] = Field(default_factory=list)
 
 
