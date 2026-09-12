@@ -127,3 +127,25 @@ def test_refresh_scans_past_twenty_known_rows_to_find_old_target(settings):
 
     assert [item.source_id for item in items] == ["old-target"]
     assert collector.get_text.await_count == 2
+
+
+def test_refresh_target_beyond_page_100_is_still_found(settings):
+    collector = KvcaCollector(settings)
+    target_id = "very-old-target"
+    pages = {
+        page: [ListEntry(source_id=f"known-{page}", title=f"known {page}", url=f"https://kvca.test/{page}", row_text="known")]
+        for page in range(1, 102)
+    }
+    pages[102] = [ListEntry(source_id=target_id, title="투자본부 인턴", url="https://kvca.test/target", row_text="target")]
+
+    async def get_text(url):
+        return url
+
+    def parse_list(html, url):
+        return pages.get(int(url.split("page=")[-1]), [])
+
+    collector.get_text = get_text
+    collector.parse_list = parse_list
+    collector.get_detail_text = AsyncMock(return_value=(FIXTURES / "kvca/detail.html").read_text(encoding="utf-8"))
+    items = asyncio.run(collector.collect(known_ids={target_id}, refresh_ids={target_id}, refresh_only=True, max_pages=None))
+    assert [item.source_id for item in items] == [target_id]

@@ -94,6 +94,41 @@ def test_existing_checkout_recovers_interrupted_managed_changes(tmp_path):
     assert (fresh / "Career" / "Recruiting_Radar" / "Health.md").read_text(encoding="utf-8") == "recovered\n"
 
 
+def test_clean_but_ahead_commit_is_recovered(tmp_path):
+    _, remote = make_remote(tmp_path)
+    checkout = tmp_path / "checkout"
+    sync = GitSync(checkout, branch="main", dry_run=False, git_url=str(remote))
+    sync.ensure_vault_checkout()
+    managed = checkout / "Career" / "Recruiting_Radar" / "ahead.md"
+    managed.write_text("ahead\n", encoding="utf-8")
+    git(checkout, "add", str(managed.relative_to(checkout)))
+    git(checkout, "commit", "-m", "local only")
+    assert int(git(checkout, "rev-list", "--count", "origin/main..HEAD")) == 1
+
+    sync.ensure_vault_checkout()
+
+    fresh = tmp_path / "fresh"
+    git(tmp_path, "clone", str(remote), str(fresh))
+    assert (fresh / "Career" / "Recruiting_Radar" / "ahead.md").read_text(encoding="utf-8") == "ahead\n"
+
+
+def test_commit_and_push_recovers_clean_ahead_commit(tmp_path):
+    _, remote = make_remote(tmp_path)
+    checkout = tmp_path / "checkout"
+    sync = GitSync(checkout, branch="main", dry_run=False, git_url=str(remote))
+    sync.ensure_vault_checkout()
+    managed = checkout / "Career" / "Recruiting_Radar" / "ahead-via-commit.md"
+    managed.write_text("ahead\n", encoding="utf-8")
+    git(checkout, "add", str(managed.relative_to(checkout)))
+    git(checkout, "commit", "-m", "local only")
+
+    result = sync.commit_and_push("no working-tree changes")
+
+    assert result.pushed is True
+    assert "recovered 1" in result.message
+    assert git(checkout, "rev-list", "--count", "origin/main..HEAD") == "0"
+
+
 def test_existing_checkout_refuses_to_recover_unmanaged_changes(tmp_path):
     _, remote = make_remote(tmp_path)
     checkout = tmp_path / "checkout"

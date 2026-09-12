@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from itertools import count
 from urllib.parse import parse_qs, urlparse
 
 from app.collectors.base import (
@@ -96,14 +97,15 @@ class KofiaCollector(CollectorBase):
             raw_metadata={"list_row": entry.row_text, "application_urls": app_urls},
         )
 
-    async def collect(self, *, known_ids: set[str] | None = None, refresh_ids: set[str] | None = None, overlap_start: datetime | None = None, max_pages: int = 10, backfill: bool = False, refresh_only: bool = False) -> list[SourceItem]:
+    async def collect(self, *, known_ids: set[str] | None = None, refresh_ids: set[str] | None = None, overlap_start: datetime | None = None, max_pages: int | None = 10, backfill: bool = False, refresh_only: bool = False) -> list[SourceItem]:
         known_ids = known_ids or set()
         refresh_ids = refresh_ids or set()
         items: list[SourceItem] = []
         consecutive_seen = 0
         pending_refresh = set(refresh_ids)
         encountered_ids: set[str] = set()
-        for page in range(1, max_pages + 1):
+        pages = range(1, max_pages + 1) if max_pages is not None else count(1)
+        for page in pages:
             list_url = self.list_url_template.format(page=page)
             try:
                 listing = self.parse_list(await self.get_text(list_url), list_url)

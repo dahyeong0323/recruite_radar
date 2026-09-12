@@ -101,7 +101,7 @@ class RadarService:
                     kwargs["updated_min"] = self._last_success(source)
                 elif refresh and refresh_ids:
                     kwargs["refresh_only"] = True
-                    kwargs["max_pages"] = 100
+                    kwargs["max_pages"] = None
                 items = [] if refresh and not refresh_ids else await collector.collect(**kwargs)
             metrics = await self.pipeline.ingest(items, source=source)
             metrics.list_items_seen = len(items)
@@ -110,7 +110,8 @@ class RadarService:
             metrics.errors.extend(getattr(collector, "errors", []))
             newest = max((item.posted_at for item in items if item.posted_at), default=None)
             append_run_log(self.settings.radar_root, metrics, secrets=self.settings.secrets)
-            durable = not metrics.errors and await self._persist(f"radar: persist {source} recruiting batch")
+            batch_persisted = await self._persist(f"radar: persist {source} recruiting batch")
+            durable = not metrics.errors and batch_persisted
             await update_source_state_async(
                 self.settings.state_path, source, success=durable,
                 seen_ids=[item.source_id for item in items] if durable else None,
@@ -119,12 +120,14 @@ class RadarService:
             if not await self._persist(f"radar: record {source} collection state"):
                 metrics.errors.append("git: source state push failed")
             health_notes: list[str] = []
-            if not refresh:
+            if not refresh and batch_persisted:
                 try:
                     metrics.telegram_sent = await self._send_immediate_alerts(items)
                 except Exception as error:  # Telegram failure must not discard collected jobs
                     metrics.errors.append(safe_exception("telegram", error, self.settings.secrets))
                     health_notes.append("Telegram delivery failed; jobs were preserved.")
+            elif not refresh and not batch_persisted:
+                health_notes.append("Telegram alerts skipped because the recruiting batch was not durably persisted.")
             if getattr(collector, "errors", []):
                 health_notes.append(f"{source}: {len(collector.errors)} detail page(s) fell back to list metadata.")
             if metrics.errors:
@@ -260,6 +263,9 @@ class RadarService:
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return
         entries = load_index(self.settings.index_path)
+        if self._migrate_legacy_digest_state(entries):
+            if not await self._persist("radar: migrate digest delivery fingerprints"):
+                raise RuntimeError("could not persist digest fingerprint migration")
         digest_path = self.settings.radar_root / "_System" / "digest_state.json"
         digest_state = load_delivery_state(digest_path).get("jobs", {})
         selected = [
@@ -292,6 +298,18 @@ class RadarService:
             await self._persist("radar: record daily digest delivery")
         finally:
             await client.close()
+
+    def _migrate_legacy_digest_state(self, entries) -> bool:
+        digest_path = self.settings.radar_root / "_System" / "digest_state.json"
+        jobs = load_delivery_state(digest_path).get("jobs", {})
+        changed = False
+        for entry in entries:
+            row = jobs.get(entry.id) or {}
+            stored = str(row.get("fingerprint") or "")
+            if stored and stored.startswith(f"{entry.fingerprint}:"):
+                set_delivery(digest_path, entry.id, "delivered", fingerprint=entry.material_fingerprint or entry.fingerprint)
+                changed = True
+        return changed
 
     async def send_deadline_reminders(self) -> None:
         try:

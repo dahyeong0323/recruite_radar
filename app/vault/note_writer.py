@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models import ClassificationResult, SourceItem
-from app.pipeline.dedupe import canonical_id, item_fingerprint, material_fingerprint
+from app.pipeline.dedupe import canonical_id, canonical_material_fingerprint, item_fingerprint
 from app.pipeline.normalize import normalize_item
 from app.pipeline.score import apply_scores
 from app.utils.dates import days_until
@@ -177,9 +177,9 @@ def build_metadata(
         "application_urls": application_urls,
         "attachments": attachments,
         "fingerprint": item_fingerprint(item),
-        "material_fingerprint": material_fingerprint(item),
         "tags": sorted({"recruiting", normalized.company_normalized or "finance", sector.casefold()}),
     }
+    metadata["material_fingerprint"] = canonical_material_fingerprint(metadata)
     return metadata
 
 

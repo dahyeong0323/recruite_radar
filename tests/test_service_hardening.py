@@ -13,7 +13,7 @@ from app.health.monitor import update_source_state, write_health_note
 from app.models import ClassificationResult, IndexEntry, RunMetrics, SourceItem
 from app.pipeline.classify import rule_based_classify
 from app.service import RadarService
-from app.telegram.outbox import delivery_is_reserved, load_state
+from app.telegram.outbox import delivery_is_reserved, load_state, set_delivery
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter, render_frontmatter
 from app.vault.index import rebuild_index
 from app.vault.note_writer import write_job_note
@@ -122,6 +122,30 @@ def test_partial_ingestion_preserves_previous_watermark(settings):
     assert result["errors"]
     assert after["last_success_at"] == before
     assert after["consecutive_failures"] == 1
+
+
+def test_alert_is_not_sent_when_batch_persistence_fails(settings):
+    candidate = source_item()
+    service = RadarService(settings)
+    service._collector = lambda source: FakeCollector([candidate])
+    sent = []
+
+    async def ingest(items, source=None):
+        return RunMetrics(run_id="persist-failed", started_at=datetime.now().astimezone(), finished_at=datetime.now().astimezone(), source=source)
+
+    async def persist(message):
+        return "persist kvca recruiting batch" not in message
+
+    async def send_alerts(items):
+        sent.extend(items)
+        return len(items)
+
+    service.pipeline.ingest = ingest
+    service._persist = persist
+    service._send_immediate_alerts = send_alerts
+    result = asyncio.run(service.collect_source("kvca"))
+    assert sent == []
+    assert result["telegram_sent"] == 0
 
 
 def test_next_run_recovers_item_that_failed_partial_ingestion(settings):
@@ -280,6 +304,30 @@ def test_daily_digest_does_not_repeat_after_unchanged_refresh(settings, monkeypa
 
     asyncio.run(run())
     assert len(FakeTelegram.messages) == 1
+
+
+def test_legacy_digest_fingerprint_is_migrated_without_resend(settings, monkeypatch):
+    _, _, metadata = _make_priority_note(settings, "B")
+    digest_path = settings.radar_root / "_System" / "digest_state.json"
+    set_delivery(digest_path, metadata["id"], "delivered", fingerprint=f"{metadata['fingerprint']}:{metadata['last_checked_at']}")
+    prod = replace(settings, dry_run=False, telegram_bot_token="fake-token", telegram_chat_id="1")
+    FakeTelegram.messages = []
+    monkeypatch.setattr(service_module, "TelegramClient", FakeTelegram)
+    persisted = []
+
+    async def run():
+        service = RadarService(prod)
+        async def persist(message):
+            persisted.append(message)
+            return True
+        service._persist = persist
+        await service.send_digest()
+
+    asyncio.run(run())
+    row = load_state(digest_path)["jobs"][metadata["id"]]
+    assert row["fingerprint"] == metadata["material_fingerprint"]
+    assert FakeTelegram.messages == []
+    assert persisted == ["radar: migrate digest delivery fingerprints"]
 
 
 def test_stale_sending_alert_is_retried(settings, monkeypatch):
