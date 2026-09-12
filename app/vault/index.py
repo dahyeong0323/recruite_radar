@@ -48,6 +48,7 @@ def _entry_from_note(path: Path, radar_root: Path, errors: list[str] | None = No
         deadline=metadata.get("deadline"),
         posted_at=metadata.get("posted_at"),
         updated_at=metadata.get("last_checked_at"),
+        source_urls=list(metadata.get("source_urls") or []),
         application_urls=list(metadata.get("application_urls") or []),
     )
 
