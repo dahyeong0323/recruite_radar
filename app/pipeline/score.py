@@ -61,12 +61,10 @@ def calculate_actionability(
 def priority_for(result: ClassificationResult, *, active: bool | None) -> str:
     if active is False:
         return "Archive" if result.relevance_score < 65 else "C"
+    if result.seniority in {"Experienced", "Senior", "Unknown"}:
+        return "C" if result.relevance_score >= 40 else "Archive"
     if result.front_office and result.sector in {"VC", "CVC", "PE", "IB"} and result.seniority in {"Intern", "Trainee"}:
         return "A" if result.relevance_score >= 85 else "B"
-    if result.seniority == "Junior" and result.sector in {"VC", "CVC", "PE", "IB"}:
-        return "B" if result.relevance_score >= 65 else "C"
-    if result.relevance_score >= 85:
-        return "A"
     if result.relevance_score >= 65:
         return "B"
     if result.relevance_score >= 40:

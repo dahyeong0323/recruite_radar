@@ -13,6 +13,7 @@ from app.pipeline.update import IngestionPipeline
 from app.service import RadarService
 from app.vault.dashboard import write_dashboards
 from app.vault.index import rebuild_index
+from app.vault.classification_audit import audit_active_misclassification
 from app.vault.git_sync import GitSync, ensure_vault_checkout
 
 
@@ -22,6 +23,9 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("bootstrap-vault")
     rebuild = sub.add_parser("rebuild-index")
     rebuild.add_argument("--project-root", type=Path)
+    audit = sub.add_parser("audit-classification")
+    audit.add_argument("--apply", action="store_true")
+    audit.add_argument("--project-root", type=Path)
     fixture = sub.add_parser("ingest-fixtures")
     fixture.add_argument("--fixture", type=Path, required=True)
     fixture.add_argument("--project-root", type=Path)
@@ -98,6 +102,14 @@ async def run(args) -> int:
         write_dashboards(settings.radar_root, entries)
         _persist_cli(settings, "radar: rebuild index and dashboards")
         print(f"rebuilt {len(entries)} jobs")
+        return 0
+    if args.command == "audit-classification":
+        rows = audit_active_misclassification(settings.radar_root, apply=args.apply)
+        if args.apply and rows:
+            entries = rebuild_index(settings.radar_root)
+            write_dashboards(settings.radar_root, entries)
+            _persist_cli(settings, "radar: correct source-conflicting intern alerts")
+        print(json.dumps({"apply": args.apply, "corrected": len(rows), "rows": rows}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "ingest-fixtures":
         metrics = await IngestionPipeline(settings).ingest(load_fixture(args.fixture))
