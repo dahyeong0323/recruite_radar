@@ -9,26 +9,27 @@ import httpx
 from app.config import Settings
 from app.models import ClassificationResult, SourceItem
 from app.pipeline.extract import extract_evidence_lines, extract_experience_range
+from app.pipeline.evidence import recruiting_evidence
 from app.pipeline.normalize import NormalizedItem, normalize_item
 from app.pipeline.score import apply_scores
 
 
-VC_TERMS = ("VC", "벤처캐피탈", "벤처투자", "투자심사", "심사역", "투자본부", "투자팀", "신기술금융", "신기사", "CVC", "스타트업 투자")
-PE_TERMS = ("PE", "PEF", "Private Equity", "사모투자", "Buyout", "바이아웃", "Private Debt", "Credit", "기업투자")
+VC_TERMS = ("VC", "벤처캐피탈", "벤처투자", "투자심사", "투자본부", "투자팀", "신기술금융", "신기사", "CVC", "스타트업 투자")
+PE_TERMS = ("PE", "PEF", "Private Equity", "사모투자", "Buyout", "바이아웃", "Private Debt", "기업투자")
 IB_TERMS = ("IB", "Investment Banking", "기업금융", "M&A", "ECM", "DCM", "IPO", "인수금융", "구조화금융", "PF", "Project Finance", "Syndication", "Coverage", "커버리지", "메자닌")
 ADJACENT_TERMS = ("FAS", "Transaction", "Deal", "Valuation", "Financial Modeling", "Research", "RA", "대체투자", "기업분석", "산업분석")
 NEGATIVE_TERMS = ("경영지원", "펀드관리", "회계", "컴플라이언스", "리스크관리", "운용지원", "백오피스", "HR", "총무", "마케팅")
 FRONT_TERMS = ("투자심사", "투자본부", "투자팀", "투자검토", "산업분석", "기업분석", "재무모델", "Financial Modeling", "Valuation", "Deal", "M&A", "ECM", "DCM", "IPO", "기업금융", "인수금융", "구조화금융", "PF")
 ROLE_TERMS = {
-    "Investment": ("투자", "심사", "investment", "portfolio selection"),
+    "Investment": ("투자", "투자심사", "investment", "portfolio selection"),
     "Deal Execution": ("deal", "m&a", "인수", "거래", "transaction"),
     "Research": ("research", "리서치", "기업분석", "산업분석", "RA"),
     "Portfolio Management": ("포트폴리오", "portfolio management", "value creation"),
     "Fundraising / IR": ("fundraising", "fund raising", "IR", "LP", "출자", "펀드레이징"),
     "Fund Management": ("펀드관리", "펀드 운용", "fund administration"),
-    "Risk": ("risk", "리스크", "위험관리"),
+    "Risk": ("risk", "리스크", "위험관리", "신용공여", "신용심사", "기업금융 심사"),
     "Compliance": ("compliance", "컴플라이언스"),
-    "Operations": ("operations", "운용지원", "운영지원"),
+    "Operations": ("operations", "운용지원", "운영지원", "서무"),
     "Finance / Accounting": ("회계", "재무회계", "accounting", "finance"),
     "Sales": ("영업", "sales"),
     "Marketing": ("마케팅", "marketing"),
@@ -66,8 +67,8 @@ def _sector(text: str) -> tuple[str, str | None]:
     return "Unknown", None
 
 
-def _weighted_sector(item: SourceItem, normalized: NormalizedItem) -> tuple[str, str | None]:
-    fields = ((normalized.title, 6), (normalized.company or "", 5), (item.body_text, 1))
+def _weighted_sector(item: SourceItem, normalized: NormalizedItem, target_text: str) -> tuple[str, str | None]:
+    fields = ((normalized.title, 6), (normalized.company or "", 5), (target_text, 1))
     groups = {"VC": VC_TERMS, "PE": PE_TERMS, "IB": IB_TERMS}
     scores = {
         sector: sum(weight for text, weight in fields for term in terms if _term_present(text, term))
@@ -78,7 +79,7 @@ def _weighted_sector(item: SourceItem, normalized: NormalizedItem) -> tuple[str,
         if best == "VC" and any(_term_present(normalized.title + " " + (normalized.company or ""), term) for term in ("CVC", "기업주도형 벤처캐피탈")):
             return "CVC", "Investment"
         return best, "General IB" if best == "IB" else "Investment"
-    return _sector(normalized.combined_text)
+    return _sector(target_text)
 
 
 def _seniority(text: str) -> tuple[str, int | None, int | None]:
@@ -99,6 +100,10 @@ def _seniority(text: str) -> tuple[str, int | None, int | None]:
 
 
 def _role_family(text: str) -> str:
+    if _contains(text, ("신용공여", "신용심사", "기업금융 심사", "리스크", "위험관리")):
+        return "Risk"
+    if _contains(text, ("서무", "운용지원", "운영지원")):
+        return "Operations"
     for role, terms in ROLE_TERMS.items():
         if _contains(text, tuple(terms)):
             return role
@@ -107,15 +112,16 @@ def _role_family(text: str) -> str:
 
 def rule_based_classify(item: SourceItem) -> ClassificationResult:
     normalized = normalize_item(item)
-    text = normalized.combined_text
-    sector, subsector = _weighted_sector(item, normalized)
-    seniority, experience_min, experience_max = _seniority(text)
-    role = _role_family(text)
-    front_office = _contains(text, FRONT_TERMS) and not (
+    report = recruiting_evidence(item)
+    text = report.target_text
+    sector, subsector = _weighted_sector(item, normalized, text)
+    seniority, experience_min, experience_max = report.seniority, report.experience_min, report.experience_max
+    role = _role_family(report.duty_text)
+    front_office = role not in {"Risk", "Operations", "Compliance", "HR / Admin"} and _contains(report.duty_text, FRONT_TERMS) and not (
         _contains(normalized.title, NEGATIVE_TERMS) and not _contains(normalized.title, FRONT_TERMS)
     )
     explicit_student = _contains(text, ("대학생", "재학생", "졸업예정자", "학부생", "undergraduate", "student"))
-    explicit_not_student = _contains(text, ("경력 4년", "경력 5년", "경력 7년", "경력 10년"))
+    explicit_not_student = report.explicit_senior
     conversion = True if _contains(text, ("정규직 전환", "채용연계", "전환 가능", "conversion")) else None
     student_eligible = False if explicit_not_student else True if explicit_student else None
     evidence = extract_evidence_lines(text, VC_TERMS + PE_TERMS + IB_TERMS + ADJACENT_TERMS, limit=6)
@@ -136,12 +142,31 @@ def rule_based_classify(item: SourceItem) -> ClassificationResult:
         reasoning_short=evidence,
     )
     return apply_scores(
-        result,
+        validate_source_result(item, result),
         active=item.active,
         location=str(item.raw_metadata.get("location") or "") or None,
         deadline=item.deadline,
         requirements_present=bool(item.body_text),
     )
+
+
+def validate_source_result(item: SourceItem, result: ClassificationResult) -> ClassificationResult:
+    """The deterministic source gate is applied to both rule and LLM results."""
+    report = recruiting_evidence(item)
+    normalized = normalize_item(item)
+    sector, subsector = _weighted_sector(item, normalized, report.target_text)
+    role = _role_family(report.duty_text)
+    front = role not in {"Risk", "Operations", "Compliance", "HR / Admin"} and _contains(report.duty_text, FRONT_TERMS)
+    return result.model_copy(update={
+        "seniority": report.seniority,
+        "experience_min": report.experience_min,
+        "experience_max": report.experience_max,
+        "sector": sector,
+        "subsector": subsector,
+        "role_family": role,
+        "front_office": front,
+        "student_eligible": False if report.explicit_senior else result.student_eligible,
+    })
 
 
 CLASSIFICATION_SCHEMA: dict[str, Any] = {
@@ -209,7 +234,7 @@ class OpenAIClassifier:
             result = ClassificationResult.model_validate(json.loads(output_text))
         except (json.JSONDecodeError, ValueError) as error:
             raise ClassificationError("OpenAI structured output failed validation") from error
-        return apply_scores(result, active=item.active, deadline=item.deadline, requirements_present=bool(item.body_text))
+        return apply_scores(validate_source_result(item, result), active=item.active, deadline=item.deadline, requirements_present=bool(item.body_text))
 
 
 async def classify_item(item: SourceItem, settings: Settings) -> ClassificationResult:

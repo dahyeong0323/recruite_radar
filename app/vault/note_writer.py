@@ -7,6 +7,7 @@ from typing import Any
 from app.models import ClassificationResult, SourceItem
 from app.pipeline.dedupe import canonical_id, canonical_material_fingerprint, item_fingerprint
 from app.pipeline.normalize import normalize_item
+from app.pipeline.classify import validate_source_result
 from app.pipeline.score import apply_scores
 from app.utils.dates import days_until
 from app.utils.clock import today
@@ -106,7 +107,13 @@ def build_metadata(
     location = item.raw_metadata.get("location") or existing.get("location")
     deadline_date = _date_only(item.deadline) or _date_only(existing.get("deadline"))
     status = "closed" if item.active is False or (deadline_date is not None and deadline_date < today()) else "active" if item.active is True else existing.get("status", "active")
-    pending = classification.status == "classification_pending"
+    # A failed LLM may retain an old label only when the source does not contradict it.
+    grounded = validate_source_result(item, classification)
+    contradictory = bool(existing and (
+        existing.get("seniority") in {"Intern", "Trainee"} and grounded.seniority not in {"Intern", "Trainee"}
+        or existing.get("priority") == "A" and grounded.priority != "A" and grounded.seniority in {"Experienced", "Unknown", "Senior"}
+    ))
+    pending = classification.status == "classification_pending" and not contradictory
     sector = existing.get("sector", "Unknown") if pending and existing.get("sector") else classification.sector if classification.sector != "Unknown" else existing.get("sector", "Unknown")
     subsector = existing.get("subsector") if pending and existing.get("subsector") else classification.subsector or existing.get("subsector")
     role_family = existing.get("role_family", "Other") if pending and existing.get("role_family") else classification.role_family if classification.role_family != "Other" else existing.get("role_family", "Other")
@@ -150,7 +157,7 @@ def build_metadata(
         "subsector": subsector,
         "role_family": role_family,
         "seniority": seniority,
-        "employment_type": "Internship" if seniority == "Intern" else existing.get("employment_type"),
+        "employment_type": "Internship" if seniority == "Intern" else None if existing.get("employment_type") == "Internship" else existing.get("employment_type"),
         "front_office": front_office,
         "priority": priority,
         "relevance_score": relevance_score,

@@ -192,6 +192,7 @@ class RadarService:
         return metrics.model_dump(mode="json")
 
     async def _send_immediate_alerts(self, items: list[SourceItem]) -> int:
+        from app.pipeline.classify import rule_based_classify
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return 0
         entries = load_index(self.settings.index_path)
@@ -202,6 +203,10 @@ class RadarService:
             for item in items:
                 entry = self._entry_for_item(entries, item)
                 if not entry or entry.id in sent or entry.priority != "A" or entry.status != "active":
+                    continue
+                # Defense in depth: an old/stale A index row cannot deliver without
+                # explicit intern recruitment and eligible investment duties.
+                if rule_based_classify(item).priority != "A":
                     continue
                 frontmatter, _ = parse_frontmatter((self.settings.vault_root / entry.file_path).read_text(encoding="utf-8"))
                 if frontmatter.get("telegram_alerted_at"):
