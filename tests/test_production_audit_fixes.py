@@ -105,6 +105,20 @@ def test_outdated_or_pending_note_is_scheduled_for_reprocessing(settings, metada
     assert "reprocess" in service._refresh_ids("kvca")
 
 
+def test_closed_outdated_note_does_not_force_unbounded_refresh(settings):
+    candidate = item(source_id="closed-old")
+    path, _ = write_job_note(settings.radar_root, candidate, rule_based_classify(candidate))
+    metadata, body = parse_frontmatter(path.read_text(encoding="utf-8"))
+    metadata.update(status="closed")
+    metadata.pop("parser_version")
+    path.write_text(render_frontmatter(metadata) + "\n" + body, encoding="utf-8")
+    rebuild_index(settings.radar_root)
+
+    service = RadarService(settings)
+    assert "closed-old" in service._known_ids("kvca")
+    assert "closed-old" not in service._refresh_ids("kvca")
+
+
 def test_sanitized_telegram_traceback_does_not_contain_token():
     token = "123456:AUDIT_SYNTHETIC_TOKEN"
 

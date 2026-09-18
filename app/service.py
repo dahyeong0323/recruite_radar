@@ -36,7 +36,7 @@ class RadarService:
         for entry in entries:
             if (
                 not entry.detail_complete
-                or entry.parser_version < CURRENT_PARSER_VERSION
+                or (entry.parser_version < CURRENT_PARSER_VERSION and entry.status == "active")
                 or entry.classification_status == "classification_pending"
             ):
                 continue
@@ -67,9 +67,15 @@ class RadarService:
         entries = load_index(self.settings.index_path)
         selected = [
             entry for entry in entries
-            if not entry.detail_complete or entry.parser_version < CURRENT_PARSER_VERSION
+            if not entry.detail_complete
             or entry.classification_status == "classification_pending"
-            or entry.priority in {"A", "B"}
+            or (
+                entry.status == "active"
+                and (
+                    entry.parser_version < CURRENT_PARSER_VERSION
+                    or entry.priority in {"A", "B"}
+                )
+            )
             or entry.user_status in {"interested", "will_apply", "applied"}
         ]
         return {entry.source_ids.get(source) for entry in selected if entry.source_ids.get(source)}
