@@ -11,6 +11,7 @@ from app.collectors.base import (
     closest_row,
     detail_body,
     extract_attachments,
+    labeled_cell,
     row_text,
 )
 from app.models import SourceItem
@@ -42,7 +43,7 @@ class VcsCollector(CollectorBase):
             title=title,
             url=VcsCollector._absolute(page_url, href),
             row_text=text,
-            deadline=parse_deadline(text),
+            deadline=dates[0] if len(dates) >= 2 and re.search(r"D-\d+", text) else None,
             posted_at=dates[-1] if dates else None,
         )
 
@@ -66,9 +67,10 @@ class VcsCollector(CollectorBase):
 
     def parse_detail(self, html: str, entry: ListEntry) -> SourceItem:
         soup = self.soup(html)
-        title_node = soup.select_one("h1, h2, .subject, .title")
+        title_node = labeled_cell(soup, "제목") or soup.select_one(".subject, .view_title, .board_title")
         title = row_text(title_node) or entry.title
-        body = detail_body(soup)
+        body_node = labeled_cell(soup, "공고 내용", "내용")
+        body = clean_text(body_node.get_text("\n", strip=True)) if body_node else detail_body(soup)
         attachments = extract_attachments(soup, entry.url)
         if len(body) < 10 and not attachments:
             raise StructuralDriftError(f"VCS detail body too short for {entry.source_id}")
@@ -78,7 +80,10 @@ class VcsCollector(CollectorBase):
         if company_match:
             company = clean_text(company_match.group(1))
         company = company or infer_company_from_title(title)
-        posted = parse_datetime_text(" ".join(soup.select_one(".date").get_text(" ", strip=True).split())) if soup.select_one(".date") else entry.posted_at
+        posted_node = labeled_cell(soup, "등록일", "등록일자")
+        deadline_node = labeled_cell(soup, "채용 마감일", "채용마감일", "접수기간")
+        posted = parse_datetime_text(row_text(posted_node)) if posted_node else entry.posted_at
+        deadline = None if re.search(r"채용시|상시|수시", body) else ((parse_deadline(row_text(deadline_node)) if deadline_node else None) or parse_deadline(body) or entry.deadline)
         return SourceItem(
             source="vcs",
             source_id=entry.source_id,
@@ -86,8 +91,8 @@ class VcsCollector(CollectorBase):
             company_raw=company,
             title_raw=clean_text(title),
             posted_at=posted,
-            deadline=parse_deadline(text) or entry.deadline,
-            active=None if "채용종료" not in entry.row_text else False,
+            deadline=deadline,
+            active=False if "채용종료" in entry.row_text or (deadline and deadline.date() < datetime.now().astimezone().date()) else None,
             body_text=body,
             attachments=attachments,
             discovered_at=datetime.now().astimezone(),
@@ -112,6 +117,8 @@ class VcsCollector(CollectorBase):
                 raise
             new_entries = [entry for entry in listing if entry.source_id not in encountered_ids]
             if not new_entries:
+                if refresh_only and pending_refresh:
+                    self.errors.append(f"repeated page before {len(pending_refresh)} refresh target(s) were found")
                 return items
             encountered_ids.update(entry.source_id for entry in new_entries)
             for entry in new_entries:

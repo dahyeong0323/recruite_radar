@@ -47,7 +47,7 @@ async def set_user_status_async(vault_root: Path, radar_root: Path, job_id: str,
         return _set_user_status_unlocked(vault_root, radar_root, job_id, status)
 
 
-async def mark_alerted(radar_root: Path, job_id: str) -> Path:
+async def mark_alerted(radar_root: Path, job_id: str, *, fingerprint: str | None = None) -> Path:
     async with GLOBAL_VAULT_LOCK:
         matches = list((radar_root / "Jobs").rglob(f"{job_id}.md"))
         if len(matches) != 1:
@@ -55,6 +55,8 @@ async def mark_alerted(radar_root: Path, job_id: str) -> Path:
         path = matches[0]
         metadata, body = parse_frontmatter(path.read_text(encoding="utf-8"))
         metadata["telegram_alerted_at"] = now().isoformat()
+        if fingerprint:
+            metadata["telegram_alert_fingerprint"] = fingerprint
         atomic_write_text(path, render_frontmatter(metadata) + "\n" + body.rstrip() + "\n")
         entries = rebuild_index(radar_root)
         write_dashboards(radar_root, entries)

@@ -68,6 +68,46 @@ class ApiUsageLedger:
             atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
             return selected
 
+    def query_state(self, keyword: str, stream: str, fallback_min: str | None) -> dict[str, Any]:
+        with _USAGE_LOCK:
+            data = self._read()
+            key = f"{stream}:{keyword}"
+            continuation = (data.get("continuations") or {}).get(key)
+            if isinstance(continuation, dict):
+                return dict(continuation)
+            keyword_watermarks = (data.get("watermarks") or {}).get(keyword) or {}
+            watermark = keyword_watermarks.get(stream) if stream in keyword_watermarks else fallback_min
+            return {"page": 0, "minimum": watermark, "maximum": datetime.now(timezone.utc).isoformat()}
+
+    def initialize_watermarks(self, keywords: list[str], fallbacks: dict[str, str | None]) -> None:
+        """Give every keyword its own baseline before rotating query windows."""
+        with _USAGE_LOCK:
+            data = self._read()
+            watermarks = data.setdefault("watermarks", {})
+            changed = False
+            for keyword in keywords:
+                row = watermarks.setdefault(keyword, {})
+                for stream, fallback in fallbacks.items():
+                    if stream not in row:
+                        row[stream] = fallback
+                        changed = True
+            if changed:
+                data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+    def save_query_progress(self, keyword: str, stream: str, state: dict[str, Any], *, complete: bool) -> None:
+        with _USAGE_LOCK:
+            data = self._read()
+            key = f"{stream}:{keyword}"
+            continuations = data.setdefault("continuations", {})
+            if complete:
+                data.setdefault("watermarks", {}).setdefault(keyword, {})[stream] = state["maximum"]
+                continuations.pop(key, None)
+            else:
+                continuations[key] = state
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
 
 def _dig(mapping: Any, *keys: str, default=None):
     current = mapping
@@ -126,7 +166,17 @@ class SaraminCollector(CollectorBase):
             return None
         url = str(job.get("url") or f"https://www.saramin.co.kr/zf_user/jobs/view?rec_idx={job_id}")
         location = _dig(position, "location", "name") or _dig(position, "location")
-        body_parts = [title, clean_text(_dig(position, "job-code", "name")), clean_text(job.get("keyword"))]
+        job_type = clean_text(_dig(position, "job-type", "name"))
+        experience = clean_text(_dig(position, "experience-level", "name"))
+        education = clean_text(_dig(position, "required-education-level", "name"))
+        body_parts = [
+            title,
+            clean_text(_dig(position, "job-code", "name")),
+            job_type,
+            experience,
+            education,
+            clean_text(job.get("keyword")),
+        ]
         return SourceItem(
             source="saramin", source_id=job_id, source_url=url,
             company_raw=clean_text(_dig(company, "detail", "name") or company.get("name")) or None,
@@ -137,32 +187,58 @@ class SaraminCollector(CollectorBase):
             active=str(job.get("active", "1")) == "1",
             body_text="\n".join(part for part in body_parts if part), attachments=[],
             discovered_at=datetime.now().astimezone(),
-            raw_metadata={"keyword_query": keyword, "api_job": job, "location": location},
+            raw_metadata={
+                "keyword_query": keyword, "api_job": job, "location": location,
+                "employment_type": job_type or None, "experience_level": experience or None,
+            },
         )
+
+    @staticmethod
+    def _total(payload: dict) -> int | None:
+        root = payload.get("job-search", payload)
+        jobs = root.get("jobs", {}) if isinstance(root, dict) else {}
+        try:
+            return int(jobs.get("total"))
+        except (AttributeError, TypeError, ValueError):
+            return None
 
     async def _collect_stream(
         self, *, keyword: str, max_pages: int, filter_name: str | None, filter_value: str | None,
+        filter_max: str | None, start_page: int,
         known_ids: set[str], refresh_ids: set[str], results: dict[str, SourceItem],
-    ) -> None:
+    ) -> tuple[bool, int]:
         sort = "ud" if filter_name == "updated_min" else "pd"
         if sort not in VALID_SORTS:
             raise CollectorError("unsupported Saramin sort mode")
-        for page_index in range(max_pages):
+        scanned = 0
+        for page_index in range(start_page, start_page + max_pages):
             params: dict[str, str | int] = {
                 "access-key": self.access_key or "", "keywords": keyword, "start": page_index,
                 "count": 100, "sort": sort, "fields": "posting-date expiration-date",
             }
             if filter_name and filter_value:
                 params[filter_name] = filter_value
+            if filter_name and filter_max:
+                params[filter_name.replace("_min", "_max")] = filter_max
             self.ledger.reserve()
             payload = await self.get_json(self.api_url, params=params)
+            error_payload = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+            if error_payload.get("code") not in (None, "", 0, "0"):
+                raise CollectorError(f"Saramin API error {error_payload.get('code')}: {clean_text(error_payload.get('message'))}")
+            if "job-search" not in payload and "jobs" not in payload:
+                raise CollectorError("Saramin response did not contain a jobs result")
             jobs = self._job_list(payload)
             if not jobs:
-                break
+                return True, page_index + 1
+            scanned += len(jobs)
             for job in jobs:
                 item = self._source_item(job, keyword)
                 if item and (filter_name == "updated_min" or item.source_id not in known_ids or item.source_id in refresh_ids):
                     results[item.source_id] = item
+            total = self._total(payload)
+            if total is not None and (page_index + 1) * 100 >= total:
+                return True, page_index + 1
+        return False, start_page + max_pages
 
     async def collect(
         self, *, known_ids: set[str] | None = None, refresh_ids: set[str] | None = None,
@@ -174,21 +250,31 @@ class SaraminCollector(CollectorBase):
             raise CollectorError("SARAMIN_ACCESS_KEY is not configured")
         known_ids, refresh_ids = known_ids or set(), refresh_ids or set()
         results: dict[str, SourceItem] = {}
+        self.ledger.initialize_watermarks(
+            self.keywords, {"published_min": published_min, "updated_min": updated_min}
+        )
         streams = [("published_min", published_min), ("updated_min", updated_min)] if published_min and updated_min else [
-            ("published_min", published_min) if published_min else ("updated_min", updated_min) if updated_min else (None, None)
+            ("published_min", published_min) if published_min else ("updated_min", updated_min) if updated_min else ("published_min", None)
         ]
-        successes = 0
+        successful_queries = 0
         keywords = self.ledger.keyword_window(self.keywords, self.settings.saramin_keywords_per_run)
         for filter_name, filter_value in streams:
-            try:
-                for keyword in keywords:
-                    await self._collect_stream(
-                        keyword=keyword, max_pages=max_pages, filter_name=filter_name, filter_value=filter_value,
+            stream_name = filter_name
+            for keyword in keywords:
+                query = self.ledger.query_state(keyword, stream_name, filter_value)
+                try:
+                    complete, next_page = await self._collect_stream(
+                        keyword=keyword, max_pages=max_pages, filter_name=filter_name, filter_value=query.get("minimum"),
+                        filter_max=query.get("maximum"), start_page=int(query.get("page", 0)),
                         known_ids=known_ids, refresh_ids=refresh_ids, results=results,
                     )
-                successes += 1
-            except Exception as error:
-                self.errors.append(safe_exception(f"saramin {filter_name or 'full'} stream", error, self.settings.secrets))
-        if successes == 0 and self.errors:
+                    query["page"] = next_page
+                    self.ledger.save_query_progress(keyword, stream_name, query, complete=complete)
+                    successful_queries += 1
+                    if not complete:
+                        self.errors.append(f"saramin {stream_name}:{keyword}: result set continues at page {next_page}")
+                except Exception as error:
+                    self.errors.append(safe_exception(f"saramin {stream_name}:{keyword}", error, self.settings.secrets))
+        if successful_queries == 0 and self.errors:
             raise CollectorError("all Saramin query streams failed")
         return list(results.values())

@@ -118,7 +118,13 @@ def _compare_title(title: str, company: str | None) -> str:
 def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
     exact = source_key(item)
     for entry in entries:
-        if exact in {f"{source}:{source_id}" for source, source_id in entry.source_ids.items() if source_id}:
+        known_keys = {f"{source}:{source_id}" for source, source_id in entry.source_ids.items() if source_id}
+        known_keys.update(
+            f"{source}:{source_id}"
+            for source, source_ids in entry.source_id_history.items()
+            for source_id in source_ids
+        )
+        if exact in known_keys:
             return DedupeDecision("merge", entry.id, reason="exact source ID")
 
     normalized = normalize_item(item)
@@ -141,6 +147,11 @@ def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
             continue
         same_target = _same_application_target(item, entry)
         gap = _posted_gap_days(item, entry)
+        existing_same_source_id = entry.source_ids.get(item.source)
+        if existing_same_source_id and existing_same_source_id != item.source_id and gap is None and not same_target:
+            # A source changing its ID is evidence of a new recruiting cycle
+            # unless an application target or dates prove otherwise.
+            continue
         if gap is not None and gap > 180:
             continue
         if gap is not None and gap > 45 and not same_target:

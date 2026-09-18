@@ -90,6 +90,18 @@ def detail_body(soup: BeautifulSoup) -> str:
     return clean_text(soup.body.get_text("\n", strip=True) if soup.body else soup.get_text("\n", strip=True))
 
 
+def labeled_cell(soup: BeautifulSoup, *labels: str) -> Tag | None:
+    """Return the value cell beside a source-specific table label."""
+    wanted = {clean_text(label).replace(" ", "") for label in labels}
+    for row in soup.select("tr"):
+        cells = row.find_all(["th", "td"], recursive=False)
+        for index, cell in enumerate(cells[:-1]):
+            label = clean_text(cell.get_text(" ", strip=True)).replace(" ", "")
+            if label in wanted:
+                return cells[index + 1]
+    return None
+
+
 def parse_http_date(value: str | None) -> datetime | None:
     if not value:
         return None

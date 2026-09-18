@@ -15,6 +15,7 @@ from app.vault.dashboard import write_dashboards
 from app.vault.index import rebuild_index
 from app.vault.classification_audit import audit_active_misclassification
 from app.vault.git_sync import GitSync, ensure_vault_checkout
+from app.vault.operation_lock import operation_lock
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -88,32 +89,46 @@ def _persist_cli(settings, message: str) -> None:
 
 async def run(args) -> int:
     settings = load_settings(getattr(args, "project_root", None))
-    if not settings.dry_run:
-        ensure_vault_checkout(settings)
     if args.command == "bootstrap-vault":
-        bootstrap(settings)
-        _persist_cli(settings, "radar: bootstrap Vault structure")
+        async with operation_lock(settings.vault_root):
+            if not settings.dry_run:
+                ensure_vault_checkout(settings)
+            bootstrap(settings)
+            _persist_cli(settings, "radar: bootstrap Vault structure")
         print(settings.radar_root)
         return 0
     if settings.dry_run:
         bootstrap(settings)
+    elif args.command in {"collect", "backfill", "collect-all", "refresh-active", "digest", "deadline"}:
+        # Protect checkout recovery from concurrent scheduler/callback Git work.
+        async with operation_lock(settings.vault_root):
+            ensure_vault_checkout(settings)
     if args.command == "rebuild-index":
-        entries = rebuild_index(settings.radar_root)
-        write_dashboards(settings.radar_root, entries)
-        _persist_cli(settings, "radar: rebuild index and dashboards")
+        async with operation_lock(settings.vault_root):
+            if not settings.dry_run:
+                ensure_vault_checkout(settings)
+            entries = rebuild_index(settings.radar_root)
+            write_dashboards(settings.radar_root, entries)
+            _persist_cli(settings, "radar: rebuild index and dashboards")
         print(f"rebuilt {len(entries)} jobs")
         return 0
     if args.command == "audit-classification":
-        rows = audit_active_misclassification(settings.radar_root, apply=args.apply)
-        if args.apply and rows:
-            entries = rebuild_index(settings.radar_root)
-            write_dashboards(settings.radar_root, entries)
-            _persist_cli(settings, "radar: correct source-conflicting intern alerts")
+        async with operation_lock(settings.vault_root):
+            if not settings.dry_run:
+                ensure_vault_checkout(settings)
+            rows = audit_active_misclassification(settings.radar_root, apply=args.apply)
+            if args.apply and rows:
+                entries = rebuild_index(settings.radar_root)
+                write_dashboards(settings.radar_root, entries)
+                _persist_cli(settings, "radar: correct source-conflicting intern alerts")
         print(json.dumps({"apply": args.apply, "corrected": len(rows), "rows": rows}, ensure_ascii=False, indent=2))
         return 0
     if args.command == "ingest-fixtures":
-        metrics = await IngestionPipeline(settings).ingest(load_fixture(args.fixture))
-        _persist_cli(settings, "radar: ingest fixture batch")
+        async with operation_lock(settings.vault_root):
+            if not settings.dry_run:
+                ensure_vault_checkout(settings)
+            metrics = await IngestionPipeline(settings).ingest(load_fixture(args.fixture))
+            _persist_cli(settings, "radar: ingest fixture batch")
         print(metrics.model_dump_json(indent=2))
         return 0
     if args.command == "collect":

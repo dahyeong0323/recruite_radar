@@ -87,15 +87,21 @@ class IngestionPipeline:
                     metrics.canonical_jobs_updated += 1
                 entry = IndexEntry(
                     id=str(metadata["id"]), file_path=path.relative_to(self.settings.vault_root).as_posix(),
-                    source_ids=metadata.get("source_ids") or {}, fingerprint=str(metadata.get("fingerprint") or ""),
+                    source_ids=metadata.get("source_ids") or {}, source_id_history=metadata.get("source_id_history") or {},
+                    detail_complete=bool(metadata.get("detail_complete", True)), fingerprint=str(metadata.get("fingerprint") or ""),
+                    parser_version=int(metadata.get("parser_version") or 0),
+                    material_fingerprint=str(metadata.get("material_fingerprint") or ""),
                     company=metadata.get("company"), title=str(metadata.get("title") or item.title_raw),
                     sector=str(metadata.get("sector") or "Unknown"), role_family=str(metadata.get("role_family") or "Other"),
+                    front_office=bool(metadata.get("front_office")),
                     department=metadata.get("department"), seniority=str(metadata.get("seniority") or "Unknown"),
                     priority=str(metadata.get("priority") or "Archive"), relevance_score=int(metadata.get("relevance_score") or 0),
                     actionability_score=int(metadata.get("actionability_score") or 0), status=str(metadata.get("status") or "active"),
                     user_status=str(metadata.get("user_status") or "unreviewed"), deadline=metadata.get("deadline"),
                     posted_at=metadata.get("posted_at"), updated_at=metadata.get("last_checked_at"),
+                    source_urls=list(metadata.get("source_urls") or []),
                     application_urls=list(metadata.get("application_urls") or []),
+                    classification_status=str(metadata.get("classification_status") or "classified"),
                 )
                 entries = [candidate for candidate in entries if candidate.id != entry.id] + [entry]
             except Exception as error:  # noqa: BLE001 - preserve each item and continue the batch

@@ -8,8 +8,9 @@ from app.models import SourceItem
 from app.pipeline.extract import extract_experience_range
 
 
-_EXCLUDED = re.compile(r"결격|기재\s*제외|경력\s*기재|지원서\s*작성|작성\s*안내|우대|참고사항|유의사항|기타사항|선호", re.I)
-_STOP = re.compile(r"^(?:\d+[.)]\s*)?(?:결격사유|지원방법|입사지원|전형절차|채용절차|제출서류|기타사항|유의사항|우대사항)\s*[:：]?$", re.I)
+_EXCLUDED = re.compile(r"결격|기재\s*제외|경력\s*기재|지원서\s*작성|작성\s*안내|참고사항|유의사항|기타사항|선호", re.I)
+_EXCLUDED_HEADER = re.compile(r"^(?:\d+[.)]\s*)?(?:결격사유|지원방법|입사지원|전형절차|채용절차|제출서류|기타사항|유의사항|우대사항)\s*[:：]?$", re.I)
+_OTHER_HEADER = re.compile(r"^(?:\d+[.)]\s*)?(?:급여|복리후생|근무지|접수기간|회사소개|근무조건|채용일정)\s*[:：]?$", re.I)
 _DUTY = re.compile(r"담당업무|주요업무|수행업무|업무내용|직무내용|모집분야|모집부문", re.I)
 _REQUIREMENT = re.compile(r"자격요건|지원자격|희망직위|모집분야|모집부문|근무형태|채용형태", re.I)
 _SENIOR = re.compile(r"경력직|경력자\s*채용|대리\s*[~～-]\s*과장|(?:대리|과장|차장|부장)\s*(?:급|직급|이상)|(?:경력|관련\s*업무|실무)\s*\d+\s*년\s*이상", re.I)
@@ -35,21 +36,22 @@ def recruiting_evidence(item: SourceItem) -> RecruitingEvidence:
     duty_lines: list[str] = []
     requirement_lines: list[str] = []
     section = ""
-    stopped = False
     for raw in item.body_text.splitlines():
         line = raw.strip()
         if not line:
-            continue
-        if _STOP.fullmatch(line):
-            stopped = True
-        if stopped or _EXCLUDED.search(line):
             continue
         if _DUTY.search(line):
             section = "duty"
         elif _REQUIREMENT.search(line):
             section = "requirement"
-        elif re.match(r"^(?:\d+[.)]\s*)?(?:급여|복리후생|근무지|접수기간|회사소개)\s*[:：]", line):
+        elif _EXCLUDED_HEADER.fullmatch(line):
+            section = "excluded"
+            continue
+        elif _OTHER_HEADER.fullmatch(line):
             section = ""
+            continue
+        if section == "excluded" or _EXCLUDED.search(line):
+            continue
         target_lines.append(line)
         if section == "duty":
             duty_lines.append(line)

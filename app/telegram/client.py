@@ -30,7 +30,10 @@ class TelegramClient:
                 raise TelegramError(data.get("description", "Telegram API error"))
             return data
         except Exception as error:
-            raise TelegramError(safe_exception(f"Telegram {method}", error, (self.token,))) from error
+            # The original httpx exception contains the token-bearing request
+            # URL. Suppress the exception chain so standard traceback logging
+            # cannot re-expose it after sanitizing the outer message.
+            raise TelegramError(safe_exception(f"Telegram {method}", error, (self.token,))) from None
 
     async def send_message(self, chat_id: str, text: str, *, reply_markup: dict | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"chat_id": chat_id, "text": text, "disable_web_page_preview": False}

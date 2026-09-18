@@ -15,42 +15,48 @@ def load_index(path: Path) -> list[IndexEntry]:
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
     rows = data.get("jobs", data) if isinstance(data, dict) else data
-    return [IndexEntry.model_validate(row) for row in rows if isinstance(row, dict)]
+    normalized_rows = [{"parser_version": 0, **row} for row in rows if isinstance(row, dict)]
+    return [IndexEntry.model_validate(row) for row in normalized_rows]
 
 
 def _entry_from_note(path: Path, radar_root: Path, errors: list[str] | None = None) -> IndexEntry | None:
     try:
         metadata, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+        if not metadata.get("id") or not metadata.get("title"):
+            raise ValueError("required id/title is missing")
+        relative = path.relative_to(radar_root.parent.parent).as_posix()
+        return IndexEntry(
+            id=str(metadata["id"]),
+            file_path=relative,
+            source_ids=metadata.get("source_ids") or {},
+            source_id_history=metadata.get("source_id_history") or {},
+            detail_complete=bool(metadata.get("detail_complete", True)),
+            parser_version=int(metadata.get("parser_version") or 0),
+            fingerprint=str(metadata.get("fingerprint") or ""),
+            material_fingerprint=str(metadata.get("material_fingerprint") or ""),
+            company=metadata.get("company"),
+            title=str(metadata["title"]),
+            sector=str(metadata.get("sector") or "Unknown"),
+            role_family=str(metadata.get("role_family") or "Other"),
+            front_office=bool(metadata.get("front_office")),
+            department=metadata.get("department"),
+            seniority=str(metadata.get("seniority") or "Unknown"),
+            priority=str(metadata.get("priority") or "Archive"),
+            relevance_score=int(metadata.get("relevance_score") or 0),
+            actionability_score=int(metadata.get("actionability_score") or 0),
+            status=str(metadata.get("status") or "active"),
+            user_status=str(metadata.get("user_status") or "unreviewed"),
+            deadline=metadata.get("deadline"),
+            posted_at=metadata.get("posted_at"),
+            updated_at=metadata.get("last_checked_at"),
+            source_urls=list(metadata.get("source_urls") or []),
+            application_urls=list(metadata.get("application_urls") or []),
+            classification_status=str(metadata.get("classification_status") or "classified"),
+        )
     except (OSError, UnicodeError, yaml.YAMLError, TypeError, ValueError) as error:
         if errors is not None:
             errors.append(f"{path.relative_to(radar_root).as_posix()}: {type(error).__name__}")
         return None
-    if not metadata.get("id") or not metadata.get("title"):
-        return None
-    relative = path.relative_to(radar_root.parent.parent).as_posix()
-    return IndexEntry(
-        id=str(metadata["id"]),
-        file_path=relative,
-        source_ids=metadata.get("source_ids") or {},
-        fingerprint=str(metadata.get("fingerprint") or ""),
-        material_fingerprint=str(metadata.get("material_fingerprint") or ""),
-        company=metadata.get("company"),
-        title=str(metadata["title"]),
-        sector=str(metadata.get("sector") or "Unknown"),
-        role_family=str(metadata.get("role_family") or "Other"),
-        department=metadata.get("department"),
-        seniority=str(metadata.get("seniority") or "Unknown"),
-        priority=str(metadata.get("priority") or "Archive"),
-        relevance_score=int(metadata.get("relevance_score") or 0),
-        actionability_score=int(metadata.get("actionability_score") or 0),
-        status=str(metadata.get("status") or "active"),
-        user_status=str(metadata.get("user_status") or "unreviewed"),
-        deadline=metadata.get("deadline"),
-        posted_at=metadata.get("posted_at"),
-        updated_at=metadata.get("last_checked_at"),
-        source_urls=list(metadata.get("source_urls") or []),
-        application_urls=list(metadata.get("application_urls") or []),
-    )
 
 
 def rebuild_index(radar_root: Path) -> list[IndexEntry]:

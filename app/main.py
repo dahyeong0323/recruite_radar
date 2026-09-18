@@ -22,10 +22,12 @@ import json
 settings = load_settings()
 service = RadarService(settings)
 scheduler = configure_scheduler(service, settings.timezone)
+_lifespan_active = False
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _lifespan_active
     if not settings.dry_run:
         ensure_vault_checkout(settings)
     settings.radar_root.mkdir(parents=True, exist_ok=True)
@@ -37,9 +39,13 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("production readiness failed: " + "; ".join(reasons))
     if settings.scheduler_enabled:
         scheduler.start()
-    yield
-    if settings.scheduler_enabled:
-        scheduler.shutdown(wait=False)
+    _lifespan_active = True
+    try:
+        yield
+    finally:
+        _lifespan_active = False
+        if settings.scheduler_enabled:
+            scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="Korea Finance Recruiting Radar", lifespan=lifespan)
@@ -48,8 +54,12 @@ app = FastAPI(title="Korea Finance Recruiting Radar", lifespan=lifespan)
 @app.get("/health")
 async def health() -> dict:
     ready, reasons = readiness(settings)
+    status = service._health_state()
+    if _lifespan_active and settings.scheduler_enabled and not getattr(scheduler, "running", False):
+        status = "FAILED"
+        reasons = [*reasons, "scheduler is not running"]
     return {
-        "status": service._health_state(), "ready": ready,
+        "status": status, "ready": ready,
         "dry_run": settings.dry_run, "reasons": reasons, "sources": service._health_rows(),
     }
 

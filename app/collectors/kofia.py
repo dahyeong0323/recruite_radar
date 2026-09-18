@@ -12,6 +12,7 @@ from app.collectors.base import (
     closest_row,
     detail_body,
     extract_attachments,
+    labeled_cell,
     row_text,
 )
 from app.models import SourceItem
@@ -67,21 +68,31 @@ class KofiaCollector(CollectorBase):
 
     def parse_detail(self, html: str, entry: ListEntry) -> SourceItem:
         soup = self.soup(html)
-        body = detail_body(soup)
+        body_node = labeled_cell(soup, "내용")
+        body = clean_text(body_node.get_text("\n", strip=True)) if body_node else detail_body(soup)
         attachments = extract_attachments(soup, entry.url)
         if len(body) < 10 and not attachments:
             raise StructuralDriftError(f"KOFIA detail body too short for {entry.source_id}")
-        title_node = soup.select_one("h1, h2, .subject, .title")
+        title_node = labeled_cell(soup, "제목") or soup.select_one(".subject, .view_title, .board_title")
         title = row_text(title_node) or entry.title
         full_text = clean_text(soup.get_text("\n", strip=True))
-        company = entry.company
+        company_node = labeled_cell(soup, "회원사명", "회사명")
+        company = row_text(company_node) or entry.company
         if not company:
             company_match = re.search(r"(?:회원사명|회사명)\s*[:：]\s*([^\n]+)", full_text)
             company = clean_text(company_match.group(1)) if company_match else infer_company_from_title(title)
-        app_urls = [self.absolute(entry.url, a.get("href", "")) for a in soup.select("a[href]") if any(key in row_text(a).lower() for key in ("지원", "apply", "홈페이지"))]
-        deadline = parse_deadline(full_text)
-        closed_markers = ("채용마감", "접수마감", "모집마감", "마감되었습니다", "마감된 공고")
-        active = False if any(marker in full_text for marker in closed_markers) else False if deadline and deadline.date() < datetime.now().date() else None
+        site_node = labeled_cell(soup, "사이트바로가기", "지원링크", "지원 링크")
+        app_anchors = site_node.select("a[href]") if site_node else []
+        app_urls = [self.absolute(entry.url, a.get("href", "")) for a in app_anchors]
+        app_urls.extend(self.absolute(entry.url, a.get("href", "")) for a in soup.select("a[href]") if any(key in row_text(a).lower() for key in ("지원", "apply", "홈페이지")))
+        app_urls = list(dict.fromkeys(url for url in app_urls if url))
+        period_node = labeled_cell(soup, "접수기간", "채용마감일", "채용 마감일")
+        deadline = None if re.search(r"채용시|상시|수시", body) else ((parse_deadline(row_text(period_node)) if period_node else None) or parse_deadline(body))
+        explicitly_closed = bool(
+            re.search(r"(?:^|[\[(])\s*(?:채용|접수|모집)?마감\s*(?:\]|\)|$)", title)
+            or re.search(r"마감되었습니다|마감된\s*공고|(?:채용|접수|모집)(?:이|가)?\s*마감(?:됨|완료)", body)
+        )
+        active = False if explicitly_closed or (deadline and deadline.date() < datetime.now().date()) else None
         return SourceItem(
             source="kofia",
             source_id=entry.source_id,
