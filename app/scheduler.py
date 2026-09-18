@@ -23,6 +23,7 @@ except ModuleNotFoundError:  # local fixture tests can run before deployment dep
         def __init__(self, timezone: str = "UTC") -> None:
             self.timezone = timezone
             self._jobs: list[_Job] = []
+            self.running = False
 
         def add_job(self, func, trigger, *, id: str, replace_existing: bool = False) -> None:
             self._jobs = [job for job in self._jobs if job.id != id]
@@ -32,10 +33,10 @@ except ModuleNotFoundError:  # local fixture tests can run before deployment dep
             return list(self._jobs)
 
         def start(self) -> None:
-            return None
+            self.running = True
 
         def shutdown(self, wait: bool = False) -> None:
-            return None
+            self.running = False
 
 
 def configure_scheduler(service, timezone: str = "Asia/Seoul") -> AsyncIOScheduler:

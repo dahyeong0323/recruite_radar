@@ -34,6 +34,8 @@ For private repositories, prefer a repository-scoped write-enabled SSH deploy ke
 
 Collection operations also use a cross-process file lock keyed by `VAULT_ROOT`. This prevents the HTTP scheduler and an operator CLI command in the same container from mutating the checkout concurrently; a second operation fails safely instead of corrupting Git state.
 
+Run exactly one Railway replica while the built-in scheduler is enabled. The file lock coordinates processes that share one filesystem, but separate replicas do not share that lock or checkout. An external scheduler may invoke the CLI commands with `SCHEDULER_ENABLED=false` when horizontal web replicas are required.
+
 Railway example:
 
 ```env
@@ -53,13 +55,15 @@ Mount persistent storage at `/data`. The app listens on Railway's `PORT` and doe
 
 KVCA, VCS, KOFIA, and Saramin remain isolated sources. Known IDs are source-scoped. Saramin publication and update watermarks run as separate query streams and union by job ID. Page indices begin at zero, publication sorting uses `pd`, update sorting uses `ud`, and usage is reserved atomically in `_System/api_usage.json` immediately before each attempt.
 
-`SARAMIN_DAILY_LIMIT` defaults to 470. `SARAMIN_KEYWORDS_PER_RUN` defaults to 8 and rotates the keyword window between runs to reduce repeated broad queries while preserving coverage. A partial stream or item failure records a degraded run and does not advance the source watermark.
+`SARAMIN_DAILY_LIMIT` defaults to 470. `SARAMIN_KEYWORDS_PER_RUN` defaults to 8 and rotates the keyword window between runs. Each keyword and publication/update stream has its own watermark and resumable page cursor. A capped or partial query keeps its original watermark, resumes at the next page, and records a degraded run.
+
+Canonical notes carry a parser version. The nightly active refresh automatically includes notes written by an older parser, incomplete detail fallbacks, and pending classifications. This repairs affected existing records after a parser rollout instead of leaving them permanently hidden behind the known-ID cache.
 
 `ENABLED_SOURCES` defaults to `kvca,vcs,kofia,saramin`. Disable a source explicitly when its production credential is unavailable; for example, use `kvca,vcs,kofia` until a Saramin key is provisioned. Readiness fails closed when Saramin is enabled without `SARAMIN_ACCESS_KEY`.
 
 ## Telegram
 
-Outgoing delivery requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Immediate A alerts use `_System/notification_outbox.json`: a durable `sending` reservation is pushed before delivery, explicit failures remain retryable, and delivered IDs are not emitted again after restart. Daily B digest receipts live in `_System/digest_state.json`, so unchanged jobs are sent once.
+Outgoing delivery requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Immediate A alerts use `_System/notification_outbox.json`: a durable `sending` reservation is pushed before delivery, explicit failures remain retryable even when a later collection returns no items, and delivered material fingerprints are not emitted again after restart. Daily B digest and deadline reminder receipts are also persisted; long digests are chunked without dropping entries.
 
 For commands and callback buttons, set a random `TELEGRAM_WEBHOOK_SECRET` and register:
 
@@ -97,7 +101,7 @@ Set `SCHEDULER_ENABLED=false` when an external scheduler invokes these commands.
 - `GET /readyz`: writable runtime and, in production, valid Vault checkout, state, and Git configuration. Returns 503 when unsafe.
 - `GET /health`: detailed radar state, readiness reasons, source failures, and dry-run status.
 
-Zero successful source runs are `DEGRADED`, not healthy.
+Zero successful source runs, stale collection watermarks, malformed canonical notes, pending classifications, persisted Git/Telegram failures, or a stopped in-process scheduler are not reported as healthy. Refresh timestamps are tracked separately, so a successful refresh cannot mask a stalled collection job.
 
 ## Environment variables
 

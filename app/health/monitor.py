@@ -11,10 +11,14 @@ from app.utils.security import redact
 from app.utils.clock import now
 
 
-def update_source_state(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None) -> dict[str, Any]:
+def update_source_state(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection") -> dict[str, Any]:
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"sources": {}}
     source_state = SourceState.model_validate(state.setdefault("sources", {}).get(source, {}))
-    if success:
+    if run_kind == "refresh" and success:
+        source_state = source_state.model_copy(update={"last_refresh_at": now(), "consecutive_refresh_failures": 0})
+    elif run_kind == "refresh":
+        source_state = source_state.model_copy(update={"consecutive_refresh_failures": source_state.consecutive_refresh_failures + 1})
+    elif success:
         merged_ids = list(dict.fromkeys((seen_ids or []) + source_state.recent_ids))[:500]
         source_state = source_state.model_copy(update={"last_success_at": now(), "recent_ids": merged_ids, "newest_timestamp": newest_timestamp, "consecutive_failures": 0})
     else:
@@ -25,11 +29,30 @@ def update_source_state(state_path: Path, source: str, *, success: bool, seen_id
     return state
 
 
-async def update_source_state_async(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None) -> dict[str, Any]:
+async def update_source_state_async(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection") -> dict[str, Any]:
     from app.vault.repository import GLOBAL_VAULT_LOCK
 
     async with GLOBAL_VAULT_LOCK:
-        return update_source_state(state_path, source, success=success, seen_ids=seen_ids, newest_timestamp=newest_timestamp)
+        return update_source_state(state_path, source, success=success, seen_ids=seen_ids, newest_timestamp=newest_timestamp, run_kind=run_kind)
+
+
+def update_operation_state(state_path: Path, operation: str, *, success: bool) -> dict[str, Any]:
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"sources": {}}
+    operations = state.setdefault("operations", {})
+    row = dict(operations.get(operation) or {})
+    row["consecutive_failures"] = 0 if success else int(row.get("consecutive_failures", 0)) + 1
+    row["last_success_at" if success else "last_failure_at"] = now().isoformat()
+    operations[operation] = row
+    state["updated_at"] = now().isoformat()
+    atomic_write_text(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
+    return state
+
+
+async def update_operation_state_async(state_path: Path, operation: str, *, success: bool) -> dict[str, Any]:
+    from app.vault.repository import GLOBAL_VAULT_LOCK
+
+    async with GLOBAL_VAULT_LOCK:
+        return update_operation_state(state_path, operation, success=success)
 
 
 def health_state(
@@ -42,6 +65,9 @@ def health_state(
         return "DEGRADED"
     data = json.loads(state_path.read_text(encoding="utf-8"))
     all_sources = data.get("sources", {})
+    operations = data.get("operations", {})
+    git_push_failures = max(git_push_failures, int((operations.get("git") or {}).get("consecutive_failures", 0)))
+    telegram_failures = max(telegram_failures, int((operations.get("telegram") or {}).get("consecutive_failures", 0)))
     source_names = list(enabled_sources) if enabled_sources is not None else list(all_sources)
     sources = {source: all_sources.get(source, {}) for source in source_names}
     if not sources or not any(value.get("last_success_at") for value in sources.values()):
@@ -69,7 +95,7 @@ def health_state(
             malformed = int(json.loads(index_errors_path.read_text(encoding="utf-8")).get("count", 0))
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             malformed = 1
-    if any(age is None or age > timedelta(hours=5) for age in ages) or any(value >= 1 for value in failures) or pending_classifications > 0 or malformed > 0:
+    if any(age is None or age > timedelta(hours=5) for age in ages) or any(value >= 1 for value in failures) or git_push_failures > 0 or telegram_failures > 0 or pending_classifications > 0 or malformed > 0:
         return "DEGRADED"
     return "HEALTHY"
 

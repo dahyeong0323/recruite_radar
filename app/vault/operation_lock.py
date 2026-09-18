@@ -21,7 +21,9 @@ def operation_lock_path(vault_root: Path) -> Path:
 
 @asynccontextmanager
 async def operation_lock(vault_root: Path, *, timeout: float = 0.0):
-    lock = FileLock(operation_lock_path(vault_root))
+    # Acquisition and release run in the executor and are not guaranteed to
+    # use the same worker thread. A shared context is therefore required.
+    lock = FileLock(operation_lock_path(vault_root), thread_local=False)
     try:
         await asyncio.to_thread(lock.acquire, timeout=timeout)
     except Timeout as error:

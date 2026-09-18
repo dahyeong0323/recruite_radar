@@ -9,8 +9,8 @@ from app.collectors.saramin import SaraminCollector
 from app.collectors.vcs import VcsCollector
 from app.config import Settings
 from app.health.metrics import append_run_log
-from app.health.monitor import health_state, update_source_state_async, write_health_note
-from app.models import ClassificationResult, SourceItem
+from app.health.monitor import health_state, update_operation_state_async, update_source_state_async, write_health_note
+from app.models import CURRENT_PARSER_VERSION, ClassificationResult, SourceItem
 from app.pipeline.update import IngestionPipeline
 from app.telegram.client import TelegramClient
 from app.telegram.formatter import job_alert
@@ -32,7 +32,18 @@ class RadarService:
 
     def _known_ids(self, source: str) -> set[str]:
         entries = load_index(self.settings.index_path)
-        return {entry.source_ids[source] for entry in entries if entry.source_ids.get(source)}
+        known: set[str] = set()
+        for entry in entries:
+            if (
+                not entry.detail_complete
+                or entry.parser_version < CURRENT_PARSER_VERSION
+                or entry.classification_status == "classification_pending"
+            ):
+                continue
+            if entry.source_ids.get(source):
+                known.add(entry.source_ids[source])
+            known.update(entry.source_id_history.get(source, []))
+        return known
 
     def _git(self) -> GitSync:
         return GitSync(
@@ -54,7 +65,13 @@ class RadarService:
 
     def _refresh_ids(self, source: str) -> set[str]:
         entries = load_index(self.settings.index_path)
-        selected = [entry for entry in entries if entry.priority in {"A", "B"} or entry.user_status in {"interested", "will_apply", "applied"}]
+        selected = [
+            entry for entry in entries
+            if not entry.detail_complete or entry.parser_version < CURRENT_PARSER_VERSION
+            or entry.classification_status == "classification_pending"
+            or entry.priority in {"A", "B"}
+            or entry.user_status in {"interested", "will_apply", "applied"}
+        ]
         return {entry.source_ids.get(source) for entry in selected if entry.source_ids.get(source)}
 
     @staticmethod
@@ -68,10 +85,15 @@ class RadarService:
         return (data.get("sources", {}).get(source) or {}).get("last_success_at")
 
     def _health_state(self) -> str:
+        try:
+            pending = sum(1 for entry in load_index(self.settings.index_path) if entry.classification_status == "classification_pending")
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            pending = 1
         return health_state(
             self.settings.state_path,
             enabled_sources=self.settings.enabled_sources,
             index_errors_path=self.settings.radar_root / "_System" / "index_errors.json",
+            pending_classifications=pending,
         )
 
     async def collect_source(self, source: str, *, refresh: bool = False) -> dict:
@@ -109,29 +131,36 @@ class RadarService:
             metrics.detail_fetches = len(items)
             metrics.errors.extend(getattr(collector, "errors", []))
             newest = max((item.posted_at for item in items if item.posted_at), default=None)
-            append_run_log(self.settings.radar_root, metrics, secrets=self.settings.secrets)
             batch_persisted = await self._persist(f"radar: persist {source} recruiting batch")
+            await update_operation_state_async(self.settings.state_path, "git", success=batch_persisted)
             durable = not metrics.errors and batch_persisted
             await update_source_state_async(
                 self.settings.state_path, source, success=durable,
                 seen_ids=[item.source_id for item in items] if durable else None,
                 newest_timestamp=newest if durable else None,
+                run_kind="refresh" if refresh else "collection",
             )
-            if not await self._persist(f"radar: record {source} collection state"):
+            state_persisted = await self._persist(f"radar: record {source} collection state")
+            await update_operation_state_async(self.settings.state_path, "git", success=state_persisted)
+            if not state_persisted:
                 metrics.errors.append("git: source state push failed")
             health_notes: list[str] = []
-            if not refresh and batch_persisted:
+            if batch_persisted:
                 try:
                     metrics.telegram_sent = await self._send_immediate_alerts(items)
+                    if metrics.telegram_sent and self.settings.telegram_bot_token and self.settings.telegram_chat_id:
+                        await update_operation_state_async(self.settings.state_path, "telegram", success=True)
                 except Exception as error:  # Telegram failure must not discard collected jobs
                     metrics.errors.append(safe_exception("telegram", error, self.settings.secrets))
                     health_notes.append("Telegram delivery failed; jobs were preserved.")
-            elif not refresh and not batch_persisted:
+                    await update_operation_state_async(self.settings.state_path, "telegram", success=False)
+            elif not batch_persisted:
                 health_notes.append("Telegram alerts skipped because the recruiting batch was not durably persisted.")
             if getattr(collector, "errors", []):
                 health_notes.append(f"{source}: {len(collector.errors)} detail page(s) fell back to list metadata.")
             if metrics.errors:
                 health_notes.append(f"{source}: partial run; watermark preserved.")
+            append_run_log(self.settings.radar_root, metrics, secrets=self.settings.secrets)
             write_health_note(
                 self.settings.radar_root,
                 state="DEGRADED" if health_notes else self._health_state(),
@@ -139,11 +168,13 @@ class RadarService:
                 notes=health_notes,
                 secrets=self.settings.secrets,
             )
-            if not await self._persist(f"radar: finalize {source} health"):
+            final_persisted = await self._persist(f"radar: finalize {source} health")
+            if not final_persisted:
+                await update_operation_state_async(self.settings.state_path, "git", success=False)
                 metrics.errors.append("git: final health push failed")
             return metrics.model_dump(mode="json")
         except Exception as error:  # source isolation is intentional
-            await update_source_state_async(self.settings.state_path, source, success=False)
+            await update_source_state_async(self.settings.state_path, source, success=False, run_kind="refresh" if refresh else "collection")
             safe = safe_exception(source, error, self.settings.secrets)
             write_health_note(self.settings.radar_root, state=self._health_state(), source_rows=self._health_rows(), notes=[safe], secrets=self.settings.secrets)
             await self._persist(f"radar: record {source} failure")
@@ -192,7 +223,6 @@ class RadarService:
         return metrics.model_dump(mode="json")
 
     async def _send_immediate_alerts(self, items: list[SourceItem]) -> int:
-        from app.pipeline.classify import rule_based_classify
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return 0
         entries = load_index(self.settings.index_path)
@@ -200,27 +230,40 @@ class RadarService:
         outbox_path = self.settings.radar_root / "_System" / "notification_outbox.json"
         sent: set[str] = set()
         try:
-            for item in items:
-                entry = self._entry_for_item(entries, item)
-                if not entry or entry.id in sent or entry.priority != "A" or entry.status != "active":
+            incoming = {(item.source, item.source_id): item for item in items}
+            for entry in entries:
+                if entry.id in sent or entry.priority != "A" or entry.status != "active" or entry.user_status == "ignored":
                     continue
-                # Defense in depth: an old/stale A index row cannot deliver without
-                # explicit intern recruitment and eligible investment duties.
-                if rule_based_classify(item).priority != "A":
-                    continue
-                frontmatter, _ = parse_frontmatter((self.settings.vault_root / entry.file_path).read_text(encoding="utf-8"))
-                if frontmatter.get("telegram_alerted_at"):
+                if not entry.front_office or entry.seniority not in {"Intern", "Trainee"} or entry.sector not in {"VC", "CVC", "PE", "IB"}:
                     continue
                 delivery = load_delivery_state(outbox_path).get("jobs", {}).get(entry.id) or {}
-                if delivery_is_reserved(delivery, as_of=now()):
+                alert_fingerprint = entry.material_fingerprint or entry.fingerprint
+                delivered_current = delivery.get("state") == "delivered" and delivery.get("fingerprint") == alert_fingerprint
+                if delivered_current or delivery.get("state") != "delivered" and delivery_is_reserved(delivery, as_of=now()):
                     continue
+                frontmatter, body = parse_frontmatter((self.settings.vault_root / entry.file_path).read_text(encoding="utf-8"))
+                recorded_fingerprint = frontmatter.get("telegram_alert_fingerprint")
+                if frontmatter.get("telegram_alerted_at") and (not recorded_fingerprint or recorded_fingerprint == alert_fingerprint):
+                    continue
+                primary = str(frontmatter.get("source_primary") or next((key for key, value in entry.source_ids.items() if value), "company"))
+                source_id = str(entry.source_ids.get(primary) or entry.id)
+                item = incoming.get((primary, source_id))
+                source_text = body.split("## Source Text", 1)[1] if "## Source Text" in body else body
+                if item is None:
+                    item = SourceItem(
+                        source=primary, source_id=source_id,
+                        source_url=(frontmatter.get("source_urls") or ["https://invalid.local"])[0],
+                        company_raw=frontmatter.get("company"), title_raw=entry.title,
+                        deadline=entry.deadline, body_text=source_text,
+                        discovered_at=entry.updated_at or now(), active=True,
+                    )
                 source_item = SourceItem(
                     source=item.source,
                     source_id=item.source_id,
                     source_url=(frontmatter.get("source_urls") or [item.source_url])[0],
                     company_raw=frontmatter.get("company"),
                     title_raw=frontmatter.get("title", item.title_raw),
-                    deadline=item.deadline,
+                    deadline=entry.deadline,
                     body_text=item.body_text,
                     discovered_at=item.discovered_at,
                     active=True,
@@ -239,17 +282,17 @@ class RadarService:
                     conversion_possible=frontmatter.get("conversion_possible"),
                 )
                 text, markup = job_alert(entry.id, source_item, classification)
-                set_delivery(outbox_path, entry.id, "sending", fingerprint=entry.fingerprint)
+                set_delivery(outbox_path, entry.id, "sending", fingerprint=alert_fingerprint)
                 if not await self._persist("radar: reserve Telegram alert"):
                     raise RuntimeError("could not durably reserve Telegram alert")
                 try:
                     await client.send_message(self.settings.telegram_chat_id, text, reply_markup=markup)
                 except Exception as error:
-                    set_delivery(outbox_path, entry.id, "failed", fingerprint=entry.fingerprint, detail=safe_exception("Telegram", error, self.settings.secrets))
+                    set_delivery(outbox_path, entry.id, "failed", fingerprint=alert_fingerprint, detail=safe_exception("Telegram", error, self.settings.secrets))
                     await self._persist("radar: record failed Telegram alert")
                     raise
-                set_delivery(outbox_path, entry.id, "delivered", fingerprint=entry.fingerprint)
-                await mark_alerted(self.settings.radar_root, entry.id)
+                set_delivery(outbox_path, entry.id, "delivered", fingerprint=alert_fingerprint)
+                await mark_alerted(self.settings.radar_root, entry.id, fingerprint=alert_fingerprint)
                 if not await self._persist("radar: record delivered Telegram alert"):
                     raise RuntimeError("Telegram delivered but delivery receipt push failed")
                 sent.add(entry.id)
@@ -260,9 +303,19 @@ class RadarService:
     async def send_digest(self) -> None:
         try:
             async with operation_lock(self.settings.vault_root):
+                if not self.settings.dry_run and self.settings.git_url:
+                    async with GLOBAL_VAULT_LOCK:
+                        synced = self._git().sync_remote()
+                    if not synced.pushed:
+                        await update_operation_state_async(self.settings.state_path, "git", success=False)
+                        raise RuntimeError(synced.message)
                 await self._send_digest_unlocked()
         except OperationInProgress:
             return
+        except Exception:
+            await update_operation_state_async(self.settings.state_path, "telegram", success=False)
+            await self._persist("radar: record digest failure")
+            raise
 
     async def _send_digest_unlocked(self) -> None:
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
@@ -273,6 +326,7 @@ class RadarService:
                 raise RuntimeError("could not persist digest fingerprint migration")
         digest_path = self.settings.radar_root / "_System" / "digest_state.json"
         digest_state = load_delivery_state(digest_path).get("jobs", {})
+        immediate_state = load_delivery_state(self.settings.radar_root / "_System" / "notification_outbox.json").get("jobs", {})
         selected = [
             entry for entry in entries
             if entry.status == "active" and entry.priority == "B" and entry.user_status != "ignored"
@@ -280,10 +334,10 @@ class RadarService:
         ]
         pending_a = []
         for entry in entries:
-            if entry.status != "active" or entry.priority != "A":
+            if entry.status != "active" or entry.priority != "A" or entry.user_status == "ignored":
                 continue
             frontmatter, _ = parse_frontmatter((self.settings.vault_root / entry.file_path).read_text(encoding="utf-8"))
-            if not frontmatter.get("telegram_alerted_at"):
+            if not frontmatter.get("telegram_alerted_at") and (immediate_state.get(entry.id) or {}).get("state") != "delivered":
                 pending_a.append(entry)
         if not selected and not pending_a:
             return
@@ -292,15 +346,31 @@ class RadarService:
             lines = ["📡 Korea Finance Recruiting Radar — Daily Digest", ""]
             if pending_a:
                 lines.append("즉시 알림 미전송 A 공고")
-                lines.extend(f"A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'}" for entry in pending_a[:10])
+                lines.extend(f"A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'}" for entry in pending_a)
                 lines.append("")
             lines.append("신규/미확인 B 공고")
-            lines.extend(f"B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected[:20])
+            lines.extend(f"B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected)
             lines.extend(["", f"통계: B {len(selected)}개 · A 알림대기 {len(pending_a)}개 · 전체 active {sum(1 for entry in entries if entry.status == 'active')}개"])
-            await client.send_message(self.settings.telegram_chat_id, "\n".join(lines))
-            for entry in selected[:20]:
+            chunks: list[str] = []
+            current = ""
+            for line in lines:
+                candidate = f"{current}\n{line}" if current else line
+                if len(candidate) > 3500 and current:
+                    chunks.append(current)
+                    current = line
+                else:
+                    current = candidate
+            if current:
+                chunks.append(current)
+            for chunk in chunks:
+                await client.send_message(self.settings.telegram_chat_id, chunk)
+            for entry in selected:
                 set_delivery(digest_path, entry.id, "delivered", fingerprint=entry.material_fingerprint or entry.fingerprint)
-            await self._persist("radar: record daily digest delivery")
+            if not await self._persist("radar: record daily digest delivery"):
+                raise RuntimeError("daily digest delivered but receipt push failed")
+            await update_operation_state_async(self.settings.state_path, "telegram", success=True)
+            if not await self._persist("radar: record digest health"):
+                raise RuntimeError("could not persist digest health")
         finally:
             await client.close()
 
@@ -319,20 +389,42 @@ class RadarService:
     async def send_deadline_reminders(self) -> None:
         try:
             async with operation_lock(self.settings.vault_root):
+                if not self.settings.dry_run and self.settings.git_url:
+                    async with GLOBAL_VAULT_LOCK:
+                        synced = self._git().sync_remote()
+                    if not synced.pushed:
+                        await update_operation_state_async(self.settings.state_path, "git", success=False)
+                        raise RuntimeError(synced.message)
                 await self._send_deadline_reminders_unlocked()
         except OperationInProgress:
             return
+        except Exception:
+            await update_operation_state_async(self.settings.state_path, "telegram", success=False)
+            await self._persist("radar: record reminder failure")
+            raise
 
     async def _send_deadline_reminders_unlocked(self) -> None:
         if self.settings.dry_run or not self.settings.telegram_bot_token or not self.settings.telegram_chat_id:
             return
         entries = load_index(self.settings.index_path)
-        due = [entry for entry in entries if entry.user_status in {"interested", "will_apply"} and entry.deadline]
-        due = [entry for entry in due if (entry.deadline - today(self.settings.timezone)).days in {1, 3}]
+        reminder_path = self.settings.radar_root / "_System" / "reminder_state.json"
+        reminder_state = load_delivery_state(reminder_path).get("jobs", {})
+        current_day = today(self.settings.timezone)
+        due = [entry for entry in entries if entry.status == "active" and entry.user_status in {"interested", "will_apply"} and entry.deadline]
+        due = [entry for entry in due if (entry.deadline - current_day).days in {1, 3}]
+        due = [entry for entry in due if (reminder_state.get(f"{entry.id}:{current_day.isoformat()}:{(entry.deadline - current_day).days}") or {}).get("state") != "delivered"]
         if not due:
             return
         client = TelegramClient(self.settings.telegram_bot_token)
         try:
-            await client.send_message(self.settings.telegram_chat_id, "⏰ 마감 알림\n\n" + "\n".join(f"{entry.title} — D-{(entry.deadline - today(self.settings.timezone)).days}" for entry in due))
+            await client.send_message(self.settings.telegram_chat_id, "⏰ 마감 알림\n\n" + "\n".join(f"{entry.title} — D-{(entry.deadline - current_day).days}" for entry in due))
+            for entry in due:
+                days = (entry.deadline - current_day).days
+                set_delivery(reminder_path, f"{entry.id}:{current_day.isoformat()}:{days}", "delivered", fingerprint=entry.material_fingerprint or entry.fingerprint)
+            if not await self._persist("radar: record deadline reminder delivery"):
+                raise RuntimeError("deadline reminder delivered but receipt push failed")
+            await update_operation_state_async(self.settings.state_path, "telegram", success=True)
+            if not await self._persist("radar: record reminder health"):
+                raise RuntimeError("could not persist reminder health")
         finally:
             await client.close()

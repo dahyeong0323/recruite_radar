@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+import re
 from typing import Any
 
-from app.models import ClassificationResult, SourceItem
+from app.models import CURRENT_PARSER_VERSION, ClassificationResult, SourceItem
 from app.pipeline.dedupe import canonical_id, canonical_material_fingerprint, item_fingerprint
 from app.pipeline.normalize import normalize_item
 from app.pipeline.classify import validate_source_result
@@ -96,6 +97,17 @@ def build_metadata(
     now = item.discovered_at
     existing = existing or {}
     old_source_ids = existing.get("source_ids") or {}
+    source_id_history = {
+        key: list(dict.fromkeys(str(value) for value in values if value))
+        for key, values in (existing.get("source_id_history") or {}).items()
+        if isinstance(values, list)
+    }
+    previous_source_id = old_source_ids.get(item.source)
+    source_id_history[item.source] = list(dict.fromkeys([
+        *source_id_history.get(item.source, []),
+        *([str(previous_source_id)] if previous_source_id else []),
+        item.source_id,
+    ]))
     cross_source_merge = bool(existing and not old_source_ids.get(item.source))
     source_ids = {key: old_source_ids.get(key) for key in SOURCE_KEYS}
     source_ids[item.source] = item.source_id
@@ -113,7 +125,8 @@ def build_metadata(
         existing.get("seniority") in {"Intern", "Trainee"} and grounded.seniority not in {"Intern", "Trainee"}
         or existing.get("priority") == "A" and grounded.priority != "A" and grounded.seniority in {"Experienced", "Unknown", "Senior"}
     ))
-    pending = classification.status == "classification_pending" and not contradictory
+    detail_failed = bool(item.raw_metadata.get("detail_error"))
+    pending = (classification.status == "classification_pending" or detail_failed) and not contradictory
     sector = existing.get("sector", "Unknown") if pending and existing.get("sector") else classification.sector if classification.sector != "Unknown" else existing.get("sector", "Unknown")
     subsector = existing.get("subsector") if pending and existing.get("subsector") else classification.subsector or existing.get("subsector")
     role_family = existing.get("role_family", "Other") if pending and existing.get("role_family") else classification.role_family if classification.role_family != "Other" else existing.get("role_family", "Other")
@@ -180,9 +193,16 @@ def build_metadata(
         "historical": bool(existing.get("historical", False) or item.raw_metadata.get("historical", False)),
         "source_primary": existing.get("source_primary") or item.source,
         "source_ids": source_ids,
+        "source_id_history": source_id_history,
+        "detail_complete": not bool(item.raw_metadata.get("detail_error")),
+        "parser_version": CURRENT_PARSER_VERSION,
         "source_urls": source_urls,
         "application_urls": application_urls,
         "attachments": attachments,
+        "classification_status": classification.status,
+        "detail_error": item.raw_metadata.get("detail_error"),
+        "telegram_alerted_at": existing.get("telegram_alerted_at"),
+        "telegram_alert_fingerprint": existing.get("telegram_alert_fingerprint"),
         "fingerprint": item_fingerprint(item),
         "tags": sorted({"recruiting", normalized.company_normalized or "finance", sector.casefold()}),
     }
@@ -250,8 +270,12 @@ def render_job_note(
                 previous_source = previous_source.split(marker, 1)[0]
         if "```" in previous_source:
             previous_source = previous_source.split("```", 2)[1].strip()
-        if previous_source and previous_source != source_text and source_text not in previous_source:
-            source_text = f"[previous source snapshot]\n{previous_source}\n\n[current source: {item.source}]\n{source_text}"
+            previous_source = re.sub(r"^text\s*\n", "", previous_source, count=1, flags=re.I)
+        if previous_source and previous_source != source_text:
+            current_block = f"[current source: {item.source}]\n{source_text}"
+            # Keep the full prior evidence even when a transient response is a
+            # strict subset of it. Avoid adding the same current snapshot twice.
+            source_text = previous_source if current_block in previous_source else f"{previous_source}\n\n{current_block}"
     body = f"""# {metadata.get('company') or 'Unknown Company'} — {metadata.get('title') or item.title_raw}
 
 ## 한눈에 보기

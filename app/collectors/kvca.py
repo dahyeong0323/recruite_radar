@@ -12,6 +12,7 @@ from app.collectors.base import (
     closest_row,
     detail_body,
     extract_attachments,
+    labeled_cell,
     row_text,
 )
 from app.models import SourceItem
@@ -56,7 +57,9 @@ class KvcaCollector(CollectorBase):
                     url=self.absolute(page_url, href),
                     row_text=text,
                     posted_at=dates[-1] if dates else None,
-                    deadline=parse_deadline(text),
+                    # The date shown in a KVCA list row is the registration date,
+                    # not the application deadline. The detail table is canonical.
+                    deadline=None,
                 )
             )
         unique: dict[str, ListEntry] = {entry.source_id: entry for entry in entries}
@@ -66,15 +69,19 @@ class KvcaCollector(CollectorBase):
 
     def parse_detail(self, html: str, entry: ListEntry) -> SourceItem:
         soup = self.soup(html)
-        title_node = soup.select_one("h1, h2, .subject, .view_title, .board_title")
+        title_node = labeled_cell(soup, "채용명", "제목") or soup.select_one(".subject, .view_title, .board_title")
         title = row_text(title_node) or entry.title
-        body = detail_body(soup)
+        body_node = labeled_cell(soup, "내용", "공고 내용")
+        body = clean_text(body_node.get_text("\n", strip=True)) if body_node else detail_body(soup)
         attachments = extract_attachments(soup, entry.url)
         if len(body) < 10 and not attachments:
             raise StructuralDriftError(f"KVCA detail body too short for {entry.source_id}")
-        date_text = " ".join(node.get_text(" ", strip=True) for node in soup.select(".date, .reg_date, .info"))
-        posted_at = parse_datetime_text(date_text) or entry.posted_at
-        deadline = parse_deadline(body) or entry.deadline
+        posted_node = labeled_cell(soup, "등록일", "등록일자")
+        deadline_node = labeled_cell(soup, "채용마감일", "채용 마감일", "접수기간")
+        posted_at = parse_datetime_text(row_text(posted_node)) if posted_node else entry.posted_at
+        # Explicit rolling recruitment has no fixed deadline even if the board
+        # supplies a placeholder date.
+        deadline = None if re.search(r"채용시|상시|수시", body) else (parse_deadline(row_text(deadline_node)) if deadline_node else None) or parse_deadline(body)
         company = infer_company_from_title(title)
         return SourceItem(
             source="kvca",
@@ -84,7 +91,7 @@ class KvcaCollector(CollectorBase):
             title_raw=clean_text(title),
             posted_at=posted_at,
             deadline=deadline,
-            active=None,
+            active=False if deadline and deadline.date() < datetime.now().astimezone().date() else None,
             body_text=body,
             attachments=attachments,
             discovered_at=datetime.now().astimezone(),

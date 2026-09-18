@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+CURRENT_PARSER_VERSION = 2
 SourceName = Literal["kvca", "vcs", "kofia", "saramin", "linkedin", "company"]
 Sector = Literal[
     "VC",
@@ -120,21 +121,27 @@ class ClassificationResult(BaseModel):
 
 class SourceState(BaseModel):
     last_success_at: datetime | None = None
+    last_refresh_at: datetime | None = None
     recent_ids: list[str] = Field(default_factory=list, max_length=500)
     newest_timestamp: datetime | None = None
     consecutive_failures: int = Field(default=0, ge=0)
+    consecutive_refresh_failures: int = Field(default=0, ge=0)
 
 
 class IndexEntry(BaseModel):
     id: str
     file_path: str
     source_ids: dict[str, str | None] = Field(default_factory=dict)
+    source_id_history: dict[str, list[str]] = Field(default_factory=dict)
+    detail_complete: bool = True
+    parser_version: int = CURRENT_PARSER_VERSION
     fingerprint: str
     material_fingerprint: str = ""
     company: str | None = None
     title: str
     sector: str = "Unknown"
     role_family: str = "Other"
+    front_office: bool = False
     department: str | None = None
     seniority: str = "Unknown"
     priority: str = "Archive"
@@ -147,6 +154,7 @@ class IndexEntry(BaseModel):
     updated_at: datetime | None = None
     source_urls: list[str] = Field(default_factory=list)
     application_urls: list[str] = Field(default_factory=list)
+    classification_status: str = "classified"
 
 
 class RunMetrics(BaseModel):

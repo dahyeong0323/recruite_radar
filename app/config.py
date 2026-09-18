@@ -125,7 +125,7 @@ def load_settings(project_root: Path | None = None) -> Settings:
             "https://roadshow.kvca.or.kr/Program/user_board/list.html?a_cd=7&a_gb=board&a_item=0&key=&keyfield=&page={page}&sm=3_2",
         ),
         vcs_list_url=os.getenv(
-            "VCS_LIST_URL", "https://www.vcs.go.kr/web/portal/recruitment/list?page={page}"
+            "VCS_LIST_URL", "https://www.vcs.go.kr/web/portal/recruitment/list?cp={page}&pageSize=10&sortOrder=REG_DDTM&sortDirection=DESC&tabCode=all&comNm="
         ),
         kofia_list_url=os.getenv(
             "KOFIA_LIST_URL",
