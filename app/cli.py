@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from pathlib import Path
 from datetime import date
 
@@ -19,7 +20,7 @@ from app.vault.operation_lock import operation_lock
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Korea Finance Recruiting Radar")
+    parser = argparse.ArgumentParser(description="Korea Finance and Content Recruiting Radar")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("bootstrap-vault")
     rebuild = sub.add_parser("rebuild-index")
@@ -31,7 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     fixture.add_argument("--fixture", type=Path, required=True)
     fixture.add_argument("--project-root", type=Path)
     collect = sub.add_parser("collect")
-    collect.add_argument("--source", choices=["kvca", "vcs", "kofia", "saramin"], required=True)
+    collect.add_argument("--source", choices=["kvca", "vcs", "kofia", "saramin", "company"], required=True)
     collect.add_argument("--project-root", type=Path)
     backfill = sub.add_parser("backfill")
     backfill.add_argument("--source", choices=["kvca", "vcs", "kofia"], required=True)
@@ -39,7 +40,7 @@ def _parser() -> argparse.ArgumentParser:
     backfill.add_argument("--project-root", type=Path)
     health = sub.add_parser("health")
     health.add_argument("--project-root", type=Path)
-    for name in ("collect-all", "refresh-active", "digest", "deadline"):
+    for name in ("collect-all", "refresh-active", "digest", "deadline", "preview-content"):
         scheduled = sub.add_parser(name)
         scheduled.add_argument("--project-root", type=Path)
     return parser
@@ -143,6 +144,20 @@ async def run(args) -> int:
         print(health_state(settings.state_path))
         return 0
     service = RadarService(settings)
+    if args.command == "preview-content":
+        from app.collectors.company import CompanyCollector
+        from app.pipeline.classify import classify_item
+        from app.telegram.formatter import job_alert
+        previews = []
+        collector = CompanyCollector(settings)
+        async with collector:
+            items = await collector.collect(max_pages=10)
+        for item in items:
+            classification = await classify_item(item, settings)
+            text, _ = job_alert("PREVIEW", item, classification)
+            previews.append(text)
+        print("\n\n---\n\n".join(previews))
+        return 0
     if args.command == "collect-all":
         print(json.dumps(await service.collect_all(), ensure_ascii=False, indent=2))
         return 0
@@ -159,6 +174,8 @@ async def run(args) -> int:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = _parser().parse_args()
     raise SystemExit(asyncio.run(run(args)))
 

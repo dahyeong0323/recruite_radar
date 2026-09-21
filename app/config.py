@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SUPPORTED_SOURCES = ("kvca", "vcs", "kofia", "saramin")
+ALL_SOURCES = (*SUPPORTED_SOURCES, "company")
 
 
 def _load_dotenv(project_root: Path) -> None:
@@ -29,7 +30,7 @@ def _bool_env(name: str, default: bool) -> bool:
 def _enabled_sources_env() -> tuple[str, ...]:
     raw = os.getenv("ENABLED_SOURCES", ",".join(SUPPORTED_SOURCES))
     sources = tuple(dict.fromkeys(part.strip().lower() for part in raw.split(",") if part.strip()))
-    invalid = sorted(set(sources) - set(SUPPORTED_SOURCES))
+    invalid = sorted(set(sources) - set(ALL_SOURCES))
     if invalid:
         raise ValueError(f"Unsupported ENABLED_SOURCES: {', '.join(invalid)}")
     if not sources:
@@ -60,6 +61,7 @@ class Settings:
     ssh_deploy_key: str | None = None
     saramin_daily_limit: int = 470
     saramin_keywords_per_run: int = 8
+    saramin_content_keywords_per_run: int = 3
     scheduler_enabled: bool = True
     http_timeout_seconds: float = 15.0
     http_retries: int = 3
@@ -136,6 +138,7 @@ def load_settings(project_root: Path | None = None) -> Settings:
         ssh_deploy_key=os.getenv("SSH_DEPLOY_KEY") or None,
         saramin_daily_limit=int(os.getenv("SARAMIN_DAILY_LIMIT", "470")),
         saramin_keywords_per_run=int(os.getenv("SARAMIN_KEYWORDS_PER_RUN", "8")),
+        saramin_content_keywords_per_run=int(os.getenv("SARAMIN_CONTENT_KEYWORDS_PER_RUN", "3")),
         scheduler_enabled=_bool_env("SCHEDULER_ENABLED", True),
         enabled_sources=_enabled_sources_env(),
     )

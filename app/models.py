@@ -6,8 +6,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-CURRENT_PARSER_VERSION = 2
+CURRENT_PARSER_VERSION = 3
 SourceName = Literal["kvca", "vcs", "kofia", "saramin", "linkedin", "company"]
+Category = Literal["Finance", "Content"]
+SummerFit = Literal["HIGH", "POSSIBLE", "LOW", "INELIGIBLE", "UNKNOWN"]
+ContentSubcategory = Literal[
+    "Content Strategy", "Global Strategy / Global Business", "IP Business",
+    "Business Development", "Corporate Strategy", "Content Acquisition / Sourcing",
+    "Investment / Corporate Development", "Market Research / Insights",
+    "Marketing Strategy", "Platform / Product Business", "Content Planning",
+    "Production", "A&R / Artist", "Operations", "Design / Creative",
+    "Engineering / Data", "HR / Corporate Support", "Other Content",
+]
 Sector = Literal[
     "VC",
     "CVC",
@@ -84,6 +94,8 @@ class SourceItem(BaseModel):
     posted_at: datetime | None = None
     deadline: datetime | None = None
     application_start: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     active: bool | None = None
     body_text: str = ""
     attachments: list[AttachmentRef] = Field(default_factory=list)
@@ -102,6 +114,8 @@ class SourceItem(BaseModel):
 class ClassificationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    category: Category = "Finance"
+    content_subcategory: ContentSubcategory | None = None
     sector: Sector = "Unknown"
     subsector: str | None = None
     role_family: RoleFamily = "Other"
@@ -111,6 +125,15 @@ class ClassificationResult(BaseModel):
     actionability_score: int = Field(default=0, ge=0, le=100)
     priority: Priority = "Archive"
     student_eligible: bool | None = None
+    student_eligibility: str | None = None
+    graduation_requirement: str | None = None
+    internship_duration: str | None = None
+    duration_min_weeks: int | None = Field(default=None, ge=0)
+    duration_max_weeks: int | None = Field(default=None, ge=0)
+    summer_fit: SummerFit = "UNKNOWN"
+    summer_fit_reason: str | None = None
+    required_skills: list[str] = Field(default_factory=list)
+    preferred_skills: list[str] = Field(default_factory=list)
     conversion_possible: bool | None = None
     experience_min: int | None = Field(default=None, ge=0)
     experience_max: int | None = Field(default=None, ge=0)
@@ -139,6 +162,8 @@ class IndexEntry(BaseModel):
     material_fingerprint: str = ""
     company: str | None = None
     title: str
+    category: Category = "Finance"
+    content_subcategory: ContentSubcategory | None = None
     sector: str = "Unknown"
     role_family: str = "Other"
     front_office: bool = False
@@ -151,6 +176,12 @@ class IndexEntry(BaseModel):
     user_status: str = "unreviewed"
     deadline: date | None = None
     posted_at: date | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    internship_duration: str | None = None
+    student_eligible: bool | None = None
+    graduation_requirement: str | None = None
+    summer_fit: SummerFit = "UNKNOWN"
     updated_at: datetime | None = None
     source_urls: list[str] = Field(default_factory=list)
     application_urls: list[str] = Field(default_factory=list)

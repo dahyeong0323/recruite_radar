@@ -48,6 +48,8 @@ def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
     payload = {
         "status": metadata.get("status"),
         "company": metadata.get("company_normalized") or metadata.get("company"),
+        "category": metadata.get("category", "Finance"),
+        "content_subcategory": metadata.get("content_subcategory"),
         "title": normalize_title(str(metadata.get("title") or "")),
         "deadline": str(metadata.get("deadline") or ""),
         "application_start": str(metadata.get("application_start") or ""),
@@ -61,6 +63,11 @@ def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
         "front_office": metadata.get("front_office"),
         "student_eligible": metadata.get("student_eligible"),
         "conversion_possible": metadata.get("conversion_possible"),
+        "start_date": str(metadata.get("start_date") or ""),
+        "end_date": str(metadata.get("end_date") or ""),
+        "internship_duration": metadata.get("internship_duration"),
+        "graduation_requirement": metadata.get("graduation_requirement"),
+        "summer_fit": metadata.get("summer_fit"),
         "experience_min": metadata.get("experience_min"),
         "experience_max": metadata.get("experience_max"),
     }
@@ -70,7 +77,9 @@ def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
 
 def canonical_id(item: SourceItem) -> str:
     day = (item.posted_at or item.discovered_at).date().isoformat()
-    return f"KRFIN-{day.replace('-', '')}-{short_hash(item.source, item.source_id, normalized_title(item.title_raw))}"
+    from app.pipeline.content import is_content_item
+    prefix = "KRCNT" if is_content_item(item) else "KRFIN"
+    return f"{prefix}-{day.replace('-', '')}-{short_hash(item.source, item.source_id, normalized_title(item.title_raw))}"
 
 
 def normalized_title(title: str) -> str:
@@ -118,6 +127,10 @@ def _compare_title(title: str, company: str | None) -> str:
 def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
     exact = source_key(item)
     for entry in entries:
+        from app.pipeline.content import is_content_item
+        incoming_category = "Content" if is_content_item(item) else "Finance"
+        if entry.category != incoming_category:
+            continue
         known_keys = {f"{source}:{source_id}" for source, source_id in entry.source_ids.items() if source_id}
         known_keys.update(
             f"{source}:{source_id}"
@@ -136,7 +149,7 @@ def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
             continue
         if _role_conflict(normalized.title, entry.title):
             continue
-        if entry.role_family != "Other":
+        if entry.category == "Finance" and entry.role_family != "Other":
             from app.pipeline.classify import rule_based_classify
             incoming_role = rule_based_classify(item).role_family
             if incoming_role != "Other" and incoming_role != entry.role_family:
@@ -180,6 +193,9 @@ def semantic_duplicate_judge(item: SourceItem, entry: IndexEntry) -> bool:
     function later without changing the canonical writer contract.
     """
     normalized = normalize_item(item)
+    from app.pipeline.content import is_content_item
+    if entry.category != ("Content" if is_content_item(item) else "Finance"):
+        return False
     if not normalized.company_normalized or not entry.company:
         return False
     if normalized.company_normalized != normalize_company(entry.company, ALIASES):

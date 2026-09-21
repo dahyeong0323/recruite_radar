@@ -12,6 +12,7 @@ from app.pipeline.extract import extract_evidence_lines, extract_experience_rang
 from app.pipeline.evidence import recruiting_evidence
 from app.pipeline.normalize import NormalizedItem, normalize_item
 from app.pipeline.score import apply_scores
+from app.pipeline.content import classify_content, is_content_item
 
 
 VC_TERMS = ("VC", "벤처캐피탈", "벤처투자", "투자심사", "투자본부", "투자팀", "신기술금융", "신기사", "CVC", "스타트업 투자")
@@ -152,6 +153,8 @@ def rule_based_classify(item: SourceItem) -> ClassificationResult:
 
 def validate_source_result(item: SourceItem, result: ClassificationResult) -> ClassificationResult:
     """The deterministic source gate is applied to both rule and LLM results."""
+    if result.category == "Content" or is_content_item(item):
+        return result if result.category == "Content" else classify_content(item)
     report = recruiting_evidence(item)
     normalized = normalize_item(item)
     sector, subsector = _weighted_sector(item, normalized, report.target_text)
@@ -238,6 +241,8 @@ class OpenAIClassifier:
 
 
 async def classify_item(item: SourceItem, settings: Settings) -> ClassificationResult:
+    if is_content_item(item, settings.project_root):
+        return classify_content(item)
     if settings.openai_api_key and settings.openai_model_classifier:
         classifier = OpenAIClassifier(settings)
         try:

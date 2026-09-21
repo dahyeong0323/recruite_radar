@@ -1,0 +1,19 @@
+role_fit:
+  high: 40
+  medium: 25
+  low: 5
+student_eligibility:
+  eligible: 25
+  unknown: 5
+  ineligible: 0
+summer_fit:
+  HIGH: 20
+  POSSIBLE: 10
+  LOW: 0
+  INELIGIBLE: 0
+  UNKNOWN: 0
+junior_fit: 10
+europe_signal: 5
+priority:
+  A: 80
+  B: 55

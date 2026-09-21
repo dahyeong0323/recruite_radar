@@ -1,0 +1,73 @@
+companies:
+  - id: naver-webtoon
+    company: NAVER WEBTOON
+    aliases: [네이버웹툰, WEBTOON]
+    official_url: https://recruit.webtoonscorp.com/rcrt/list.do
+    collector: naver_board
+    enabled: true
+    priority_target: true
+    source_status: verified
+    saramin_keywords: [네이버웹툰 인턴]
+  - id: kakao-entertainment
+    company: Kakao Entertainment
+    aliases: [카카오엔터테인먼트, 카카오엔터]
+    official_url: https://careers.kakaoent.com/ko/job
+    collector: greeting
+    enabled: true
+    priority_target: true
+    source_status: verified
+    saramin_keywords: [카카오엔터테인먼트 인턴]
+  - id: sm-entertainment
+    company: SM Entertainment
+    aliases: [SM엔터테인먼트, 에스엠엔터테인먼트]
+    official_url: https://recruit.smentertainment.com/ko/home
+    collector: greeting
+    enabled: true
+    priority_target: true
+    source_status: verified
+    saramin_keywords: [SM엔터테인먼트 인턴]
+  - id: hybe
+    company: HYBE
+    aliases: [하이브, HYBE MUSIC GROUP APAC, Weverse Company, BIGHIT MUSIC, PLEDIS Entertainment, SOURCE MUSIC, BELIFT LAB]
+    official_url: https://careers.hybecorp.com/ko/home
+    collector: greeting
+    enabled: true
+    source_status: verified
+    saramin_keywords: [하이브 인턴]
+  - id: jyp-entertainment
+    company: JYP Entertainment
+    aliases: [JYP엔터테인먼트, 제이와이피엔터테인먼트]
+    official_url: https://recruit.jype.com/ko/jobs
+    collector: jyp_greeting
+    enabled: true
+    source_status: verified
+    saramin_keywords: [JYP엔터테인먼트 인턴]
+  - id: munpia
+    company: MUNPIA
+    aliases: [문피아]
+    official_url: https://recruit.munpiacorp.com/rcrt/list.do
+    collector: naver_board
+    enabled: true
+    source_status: verified
+    saramin_keywords: [문피아 인턴]
+  - id: wavve
+    company: Wavve
+    aliases: [웨이브, 콘텐츠웨이브]
+    official_url: https://wavve.career.greetinghr.com/ko/home
+    collector: greeting
+    enabled: true
+    source_status: verified
+    saramin_keywords: [콘텐츠웨이브 인턴]
+  - {id: ridi, company: RIDI, aliases: [리디], official_url: https://ridi.recruit.roundhr.com/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: yg-entertainment, company: YG Entertainment, aliases: [YG엔터테인먼트], official_url: https://yg-entertainment.recruiter.co.kr/career/home, collector: saramin, enabled: true, source_status: fallback}
+  - {id: cj-enm, company: CJ ENM, aliases: [씨제이이엔엠], official_url: https://recruit.cjenm.com/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: studio-dragon, company: Studio Dragon, aliases: [스튜디오드래곤], official_url: https://recruit.cj.net/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: tving, company: TVING, aliases: [티빙], official_url: https://team.tving.com/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: sll, company: SLL, aliases: [에스엘엘중앙], official_url: https://www.sll.co.kr/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: studio-new, company: Studio&NEW, aliases: [스튜디오앤뉴, NEW], official_url: https://www.its-new.co.kr/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: showbox, company: Showbox, aliases: [쇼박스], official_url: https://www.showbox.co.kr/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: lotte-entertainment, company: Lotte Entertainment, aliases: [롯데엔터테인먼트, 롯데컬처웍스], official_url: https://www.lottecinema.co.kr/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: coupang-play, company: Coupang Play, aliases: [쿠팡플레이], official_url: https://www.coupang.jobs/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: netflix-korea, company: Netflix Korea, aliases: [넷플릭스코리아], official_url: https://jobs.netflix.com/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: disney-korea, company: Disney Korea, aliases: [디즈니코리아, 월트디즈니컴퍼니코리아], official_url: https://jobs.disneycareers.com/, collector: saramin, enabled: true, source_status: fallback}
+  - {id: sony-pictures-korea, company: Sony Pictures Korea, aliases: [소니픽쳐스코리아], official_url: https://www.sonypicturesjobs.com/, collector: saramin, enabled: true, source_status: fallback}

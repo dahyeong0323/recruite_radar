@@ -35,3 +35,26 @@ role_family:
   - HR / Admin
   - Technology
   - Other
+categories:
+  - Finance
+  - Content
+content_subcategory:
+  - Content Strategy
+  - Global Strategy / Global Business
+  - IP Business
+  - Business Development
+  - Corporate Strategy
+  - Content Acquisition / Sourcing
+  - Investment / Corporate Development
+  - Market Research / Insights
+  - Marketing Strategy
+  - Platform / Product Business
+  - Content Planning
+  - Production
+  - A&R / Artist
+  - Operations
+  - Design / Creative
+  - Engineering / Data
+  - HR / Corporate Support
+  - Other Content
+summer_fit: [HIGH, POSSIBLE, LOW, INELIGIBLE, UNKNOWN]

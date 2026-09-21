@@ -7,6 +7,7 @@ from app.collectors.kofia import KofiaCollector
 from app.collectors.kvca import KvcaCollector
 from app.collectors.saramin import SaraminCollector
 from app.collectors.vcs import VcsCollector
+from app.collectors.company import CompanyCollector
 from app.config import Settings
 from app.health.metrics import append_run_log
 from app.health.monitor import health_state, update_operation_state_async, update_source_state_async, write_health_note
@@ -61,7 +62,7 @@ class RadarService:
         return result.pushed
 
     def _collector(self, source: str):
-        return {"kvca": KvcaCollector, "vcs": VcsCollector, "kofia": KofiaCollector, "saramin": SaraminCollector}[source](self.settings)
+        return {"kvca": KvcaCollector, "vcs": VcsCollector, "kofia": KofiaCollector, "saramin": SaraminCollector, "company": CompanyCollector}[source](self.settings)
 
     def _refresh_ids(self, source: str) -> set[str]:
         entries = load_index(self.settings.index_path)
@@ -72,6 +73,8 @@ class RadarService:
             or (
                 entry.status == "active"
                 and (
+                    entry.category == "Content"
+                    or
                     entry.parser_version < CURRENT_PARSER_VERSION
                     or entry.priority in {"A", "B"}
                 )
@@ -240,7 +243,9 @@ class RadarService:
             for entry in entries:
                 if entry.id in sent or entry.priority != "A" or entry.status != "active" or entry.user_status == "ignored":
                     continue
-                if not entry.front_office or entry.seniority not in {"Intern", "Trainee"} or entry.sector not in {"VC", "CVC", "PE", "IB"}:
+                finance_alert = entry.front_office and entry.seniority in {"Intern", "Trainee"} and entry.sector in {"VC", "CVC", "PE", "IB"}
+                content_alert = entry.category == "Content" and entry.seniority in {"Intern", "Trainee"}
+                if not (finance_alert or content_alert):
                     continue
                 delivery = load_delivery_state(outbox_path).get("jobs", {}).get(entry.id) or {}
                 alert_fingerprint = entry.material_fingerprint or entry.fingerprint
@@ -260,8 +265,9 @@ class RadarService:
                         source=primary, source_id=source_id,
                         source_url=(frontmatter.get("source_urls") or ["https://invalid.local"])[0],
                         company_raw=frontmatter.get("company"), title_raw=entry.title,
-                        deadline=entry.deadline, body_text=source_text,
+                        deadline=entry.deadline, start_date=entry.start_date, end_date=entry.end_date, body_text=source_text,
                         discovered_at=entry.updated_at or now(), active=True,
+                        raw_metadata={"category": entry.category, "location": frontmatter.get("location")},
                     )
                 source_item = SourceItem(
                     source=item.source,
@@ -270,11 +276,16 @@ class RadarService:
                     company_raw=frontmatter.get("company"),
                     title_raw=frontmatter.get("title", item.title_raw),
                     deadline=entry.deadline,
+                    start_date=entry.start_date,
+                    end_date=entry.end_date,
                     body_text=item.body_text,
                     discovered_at=item.discovered_at,
                     active=True,
+                    raw_metadata={**item.raw_metadata, "category": entry.category, "location": frontmatter.get("location")},
                 )
                 classification = ClassificationResult(
+                    category=frontmatter.get("category", "Finance"),
+                    content_subcategory=frontmatter.get("content_subcategory"),
                     sector=frontmatter.get("sector", "Unknown"),
                     subsector=frontmatter.get("subsector"),
                     role_family=frontmatter.get("role_family", "Other"),
@@ -285,6 +296,15 @@ class RadarService:
                     actionability_score=int(frontmatter.get("actionability_score", 0)),
                     classification_confidence=float(frontmatter.get("classification_confidence", 0)),
                     student_eligible=frontmatter.get("student_eligible"),
+                    student_eligibility=frontmatter.get("student_eligibility"),
+                    graduation_requirement=frontmatter.get("graduation_requirement"),
+                    internship_duration=frontmatter.get("internship_duration"),
+                    duration_min_weeks=frontmatter.get("duration_min_weeks"),
+                    duration_max_weeks=frontmatter.get("duration_max_weeks"),
+                    summer_fit=frontmatter.get("summer_fit", "UNKNOWN"),
+                    summer_fit_reason=frontmatter.get("summer_fit_reason"),
+                    required_skills=frontmatter.get("required_skills") or [],
+                    preferred_skills=frontmatter.get("preferred_skills") or [],
                     conversion_possible=frontmatter.get("conversion_possible"),
                 )
                 text, markup = job_alert(entry.id, source_item, classification)
@@ -349,13 +369,13 @@ class RadarService:
             return
         client = TelegramClient(self.settings.telegram_bot_token)
         try:
-            lines = ["📡 Korea Finance Recruiting Radar — Daily Digest", ""]
+            lines = ["📡 Korea Finance & Content Recruiting Radar — Daily Digest", ""]
             if pending_a:
                 lines.append("즉시 알림 미전송 A 공고")
-                lines.extend(f"A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'}" for entry in pending_a)
+                lines.extend(f"{'[CONTENT] ' if entry.category == 'Content' else ''}A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.summer_fit if entry.category == 'Content' else entry.sector}" for entry in pending_a)
                 lines.append("")
             lines.append("신규/미확인 B 공고")
-            lines.extend(f"B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected)
+            lines.extend(f"{'[CONTENT] ' if entry.category == 'Content' else ''}B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected)
             lines.extend(["", f"통계: B {len(selected)}개 · A 알림대기 {len(pending_a)}개 · 전체 active {sum(1 for entry in entries if entry.status == 'active')}개"])
             chunks: list[str] = []
             current = ""

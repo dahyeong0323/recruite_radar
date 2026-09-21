@@ -24,6 +24,8 @@ def audit_active_misclassification(radar_root: Path, *, apply: bool = False) -> 
     for path in sorted((radar_root / "Jobs").rglob("*.md")):
         original = path.read_text(encoding="utf-8")
         metadata, body = parse_frontmatter(original)
+        if metadata.get("category", "Finance") != "Finance":
+            continue
         if metadata.get("status") != "active" or metadata.get("priority") != "A" or metadata.get("seniority") != "Intern":
             continue
         source_text = _stored_source(body)

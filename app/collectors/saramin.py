@@ -13,6 +13,8 @@ from app.utils.dates import parse_datetime_text
 from app.utils.security import safe_exception
 from app.utils.text import clean_text
 from app.vault.frontmatter import atomic_write_text
+from app.content_watchlist import content_company_for, saramin_content_keywords
+from app.collectors.company import is_target_posting
 
 
 SARAMIN_KEYWORDS = [
@@ -56,15 +58,15 @@ class ApiUsageLedger:
             atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
             return used + 1
 
-    def keyword_window(self, keywords: list[str], count: int) -> list[str]:
+    def keyword_window(self, keywords: list[str], count: int, *, cursor_key: str = "keyword_cursor") -> list[str]:
         with _USAGE_LOCK:
             data = self._read()
             if not keywords:
                 return []
             count = max(1, min(count, len(keywords)))
-            cursor = int(data.get("keyword_cursor", 0)) % len(keywords)
+            cursor = int(data.get(cursor_key, 0)) % len(keywords)
             selected = [keywords[(cursor + offset) % len(keywords)] for offset in range(count)]
-            data["keyword_cursor"] = (cursor + count) % len(keywords)
+            data[cursor_key] = (cursor + count) % len(keywords)
             atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
             return selected
 
@@ -143,6 +145,7 @@ class SaraminCollector(CollectorBase):
         self.api_url = settings.saramin_api_url
         self.access_key = settings.saramin_access_key
         self.keywords = list(dict.fromkeys(keywords or SARAMIN_KEYWORDS))
+        self.content_keywords = saramin_content_keywords(settings.project_root) if keywords is None else []
         self.ledger = ApiUsageLedger(
             settings.radar_root / "_System" / "api_usage.json",
             timezone_name=settings.timezone,
@@ -177,9 +180,13 @@ class SaraminCollector(CollectorBase):
             education,
             clean_text(job.get("keyword")),
         ]
+        raw_company = clean_text(_dig(company, "detail", "name") or company.get("name")) or None
+        content_company = content_company_for(raw_company, self.settings.project_root)
+        if content_company and not is_target_posting(title, f"{job_type} {experience}"):
+            return None
         return SourceItem(
             source="saramin", source_id=job_id, source_url=url,
-            company_raw=clean_text(_dig(company, "detail", "name") or company.get("name")) or None,
+            company_raw=str(content_company["company"]) if content_company else raw_company,
             title_raw=title,
             posted_at=_timestamp(job.get("posting-timestamp") or job.get("posting-date")),
             deadline=_timestamp(job.get("expiration-timestamp") or job.get("expiration-date")),
@@ -190,6 +197,9 @@ class SaraminCollector(CollectorBase):
             raw_metadata={
                 "keyword_query": keyword, "api_job": job, "location": location,
                 "employment_type": job_type or None, "experience_level": experience or None,
+                "category": "Content" if content_company else "Finance",
+                "company_id": content_company.get("id") if content_company else None,
+                "official_source": False,
             },
         )
 
@@ -257,7 +267,12 @@ class SaraminCollector(CollectorBase):
             ("published_min", published_min) if published_min else ("updated_min", updated_min) if updated_min else ("published_min", None)
         ]
         successful_queries = 0
-        keywords = self.ledger.keyword_window(self.keywords, self.settings.saramin_keywords_per_run)
+        finance_keywords = self.ledger.keyword_window(self.keywords, self.settings.saramin_keywords_per_run)
+        content_keywords = self.ledger.keyword_window(
+            self.content_keywords, self.settings.saramin_content_keywords_per_run,
+            cursor_key="content_keyword_cursor",
+        ) if self.content_keywords else []
+        keywords = list(dict.fromkeys([*finance_keywords, *content_keywords]))
         for filter_name, filter_value in streams:
             stream_name = filter_name
             for keyword in keywords:

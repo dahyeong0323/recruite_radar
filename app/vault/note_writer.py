@@ -97,6 +97,8 @@ def build_metadata(
     now = item.discovered_at
     existing = existing or {}
     old_source_ids = existing.get("source_ids") or {}
+    official_existing = existing.get("source_primary") == "company" or bool(old_source_ids.get("company"))
+    preserve_official = official_existing and item.source != "company"
     source_id_history = {
         key: list(dict.fromkeys(str(value) for value in values if value))
         for key, values in (existing.get("source_id_history") or {}).items()
@@ -113,10 +115,10 @@ def build_metadata(
     source_ids[item.source] = item.source_id
     source_urls = list(existing.get("source_urls") or [])
     if item.source_url not in source_urls:
-        source_urls.append(item.source_url)
+        source_urls = [item.source_url, *source_urls] if item.source == "company" else [*source_urls, item.source_url]
     application_urls = _unique_urls([*(existing.get("application_urls") or []), *(item.raw_metadata.get("application_urls") or [])])
     attachments = _merge_attachments(existing.get("attachments"), item.attachments)
-    location = item.raw_metadata.get("location") or existing.get("location")
+    location = existing.get("location") if preserve_official and existing.get("location") else item.raw_metadata.get("location") or existing.get("location")
     deadline_date = _date_only(item.deadline) or _date_only(existing.get("deadline"))
     status = "closed" if item.active is False or (deadline_date is not None and deadline_date < today()) else "active" if item.active is True else existing.get("status", "active")
     # A failed LLM may retain an old label only when the source does not contradict it.
@@ -126,7 +128,7 @@ def build_metadata(
         or existing.get("priority") == "A" and grounded.priority != "A" and grounded.seniority in {"Experienced", "Unknown", "Senior"}
     ))
     detail_failed = bool(item.raw_metadata.get("detail_error"))
-    pending = (classification.status == "classification_pending" or detail_failed) and not contradictory
+    pending = (classification.status == "classification_pending" or detail_failed or preserve_official) and not contradictory
     sector = existing.get("sector", "Unknown") if pending and existing.get("sector") else classification.sector if classification.sector != "Unknown" else existing.get("sector", "Unknown")
     subsector = existing.get("subsector") if pending and existing.get("subsector") else classification.subsector or existing.get("subsector")
     role_family = existing.get("role_family", "Other") if pending and existing.get("role_family") else classification.role_family if classification.role_family != "Other" else existing.get("role_family", "Other")
@@ -136,10 +138,11 @@ def build_metadata(
     conversion_possible = existing.get("conversion_possible") if pending and existing.get("conversion_possible") is not None else classification.conversion_possible if classification.conversion_possible is not None else existing.get("conversion_possible")
     title = normalized.title
     existing_title = clean_text(str(existing.get("title") or ""))
-    if existing_title and not old_source_ids.get(item.source) and title_similarity(existing_title, title) >= 0.60:
+    if existing_title and item.source != "company" and official_existing:
         title = existing_title
-    scored = apply_scores(
-        classification.model_copy(
+    elif existing_title and not old_source_ids.get(item.source) and title_similarity(existing_title, title) >= 0.60:
+        title = existing_title
+    merged_classification = classification.model_copy(
             update={
                 "sector": sector,
                 "subsector": subsector,
@@ -151,9 +154,9 @@ def build_metadata(
                 "experience_min": classification.experience_min if classification.experience_min is not None else existing.get("experience_min"),
                 "experience_max": classification.experience_max if classification.experience_max is not None else existing.get("experience_max"),
             }
-        ),
-        active=status == "active",
-        location=location,
+    )
+    scored = merged_classification if classification.category == "Content" else apply_scores(
+        merged_classification, active=status == "active", location=location,
         deadline=_date_only(item.deadline) or _date_only(existing.get("deadline")),
         requirements_present=bool(item.body_text) or bool(existing),
     )
@@ -163,14 +166,16 @@ def build_metadata(
     confidence = float(existing.get("classification_confidence") or 0) if pending and existing else classification.classification_confidence
     metadata: dict[str, Any] = {
         "id": job_id or existing.get("id") or canonical_id(item),
-        "company": normalized.company or existing.get("company"),
-        "company_normalized": normalized.company_normalized or existing.get("company_normalized"),
+        "company": (normalized.company if item.source == "company" or not official_existing else existing.get("company")) or existing.get("company"),
+        "company_normalized": (normalized.company_normalized if item.source == "company" or not official_existing else existing.get("company_normalized")) or existing.get("company_normalized"),
         "title": title,
+        "category": existing.get("category", classification.category) if preserve_official else classification.category,
+        "content_subcategory": existing.get("content_subcategory") if preserve_official else classification.content_subcategory,
         "sector": sector,
         "subsector": subsector,
         "role_family": role_family,
         "seniority": seniority,
-        "employment_type": "Internship" if seniority == "Intern" else None if existing.get("employment_type") == "Internship" else existing.get("employment_type"),
+        "employment_type": existing.get("employment_type") if preserve_official and existing.get("employment_type") else item.raw_metadata.get("employment_type") or ("Internship" if seniority == "Intern" else None if existing.get("employment_type") == "Internship" else existing.get("employment_type")),
         "front_office": front_office,
         "priority": priority,
         "relevance_score": relevance_score,
@@ -180,6 +185,8 @@ def build_metadata(
         "user_status": existing.get("user_status", "unreviewed"),
         "posted_at": _date(item.posted_at) or existing.get("posted_at"),
         "application_start": _date(item.application_start) or existing.get("application_start"),
+        "start_date": _iso(item.start_date) or existing.get("start_date"),
+        "end_date": _iso(item.end_date) or existing.get("end_date"),
         "deadline": _date(item.deadline) or existing.get("deadline"),
         "first_seen_at": existing.get("first_seen_at") or _iso(now),
         "last_seen_at": _iso(now),
@@ -189,9 +196,18 @@ def build_metadata(
         "experience_min": classification.experience_min if classification.experience_min is not None else existing.get("experience_min"),
         "experience_max": classification.experience_max if classification.experience_max is not None else existing.get("experience_max"),
         "student_eligible": student_eligible,
+        "student_eligibility": existing.get("student_eligibility") if preserve_official else classification.student_eligibility or existing.get("student_eligibility"),
+        "graduation_requirement": existing.get("graduation_requirement") if preserve_official else classification.graduation_requirement or existing.get("graduation_requirement"),
+        "internship_duration": existing.get("internship_duration") if preserve_official else classification.internship_duration or existing.get("internship_duration"),
+        "duration_min_weeks": existing.get("duration_min_weeks") if preserve_official else classification.duration_min_weeks if classification.duration_min_weeks is not None else existing.get("duration_min_weeks"),
+        "duration_max_weeks": existing.get("duration_max_weeks") if preserve_official else classification.duration_max_weeks if classification.duration_max_weeks is not None else existing.get("duration_max_weeks"),
+        "summer_fit": existing.get("summer_fit", "UNKNOWN") if preserve_official else classification.summer_fit if classification.category == "Content" else existing.get("summer_fit", "UNKNOWN"),
+        "summer_fit_reason": existing.get("summer_fit_reason") if preserve_official else classification.summer_fit_reason or existing.get("summer_fit_reason"),
+        "required_skills": existing.get("required_skills") or [] if preserve_official else classification.required_skills or existing.get("required_skills") or [],
+        "preferred_skills": existing.get("preferred_skills") or [] if preserve_official else classification.preferred_skills or existing.get("preferred_skills") or [],
         "conversion_possible": conversion_possible,
         "historical": bool(existing.get("historical", False) or item.raw_metadata.get("historical", False)),
-        "source_primary": existing.get("source_primary") or item.source,
+        "source_primary": "company" if item.source == "company" or official_existing else existing.get("source_primary") or item.source,
         "source_ids": source_ids,
         "source_id_history": source_id_history,
         "detail_complete": not bool(item.raw_metadata.get("detail_error")),
@@ -204,7 +220,7 @@ def build_metadata(
         "telegram_alerted_at": existing.get("telegram_alerted_at"),
         "telegram_alert_fingerprint": existing.get("telegram_alert_fingerprint"),
         "fingerprint": item_fingerprint(item),
-        "tags": sorted({"recruiting", normalized.company_normalized or "finance", sector.casefold()}),
+        "tags": sorted({"recruiting", normalized.company_normalized or classification.category.casefold(), classification.category.casefold(), sector.casefold()}),
     }
     metadata["material_fingerprint"] = canonical_material_fingerprint(metadata)
     return metadata
@@ -281,7 +297,9 @@ def render_job_note(
 ## 한눈에 보기
 
 - **Priority:** {metadata.get('priority')}
+- **Category:** {metadata.get('category', 'Finance')}
 - **Sector:** {metadata.get('sector')} / {metadata.get('role_family')}
+- **Content subcategory:** {metadata.get('content_subcategory') or '해당 없음'}
 - **Seniority:** {metadata.get('seniority')}
 - **Location:** {metadata.get('location') or '미상'}
 - **Deadline:** {deadline_line}
@@ -298,8 +316,18 @@ def render_job_note(
 ## 지원 요건
 
 - 학생 적합성: {metadata.get('student_eligible')}
+- 학생 자격 근거: {metadata.get('student_eligibility') or '미상'}
+- 졸업 요건: {metadata.get('graduation_requirement') or '미상'}
 - 경력 범위: {metadata.get('experience_min')}–{metadata.get('experience_max')}년
+- 인턴 기간: {metadata.get('internship_duration') or '미상'}
+- 근무 시작/종료: {metadata.get('start_date') or '미상'} / {metadata.get('end_date') or '미상'}
+- Summer Fit: **{metadata.get('summer_fit', 'UNKNOWN')}** — {metadata.get('summer_fit_reason') or '판단 근거 부족'}
 - 전환 가능성: {metadata.get('conversion_possible')}
+
+### 기술 및 경험
+
+- 필수: {', '.join(metadata.get('required_skills') or []) or '미상'}
+- 우대: {', '.join(metadata.get('preferred_skills') or []) or '미상'}
 
 ## 왜 잡혔는가
 

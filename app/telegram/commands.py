@@ -8,13 +8,14 @@ from app.utils.clock import today
 from app.utils.dates import days_until
 
 
-LIST_COMMANDS = {"/today", "/intern", "/junior", "/saved", "/deadline"}
+LIST_COMMANDS = {"/today", "/intern", "/junior", "/content", "/saved", "/deadline"}
 HELP_TEXT = """사용할 수 있는 명령어
 
 /status - 봇과 공고 현황
 /today - 오늘 등록된 공고
 /intern - 인턴·트레이니 공고
 /junior - 주니어·신입 공고
+/content - 콘텐츠 산업 공고
 /saved - 관심·지원예정 공고
 /deadline - 7일 이내 마감
 /help - 명령어 안내"""
@@ -26,6 +27,8 @@ def select_entries(command: str, entries: list[IndexEntry], *, timezone_name: st
         return [entry for entry in active if entry.seniority in {"Intern", "Trainee"}]
     if command == "/junior":
         return [entry for entry in active if entry.seniority in {"Junior", "New Graduate"}]
+    if command == "/content":
+        return [entry for entry in active if entry.category == "Content"]
     if command == "/saved":
         return [entry for entry in entries if entry.user_status in {"interested", "will_apply"}]
     if command == "/deadline":
@@ -65,6 +68,7 @@ def _list_message(command: str, entries: list[IndexEntry], *, limit: int = 8) ->
         "/today": "오늘 등록된 공고",
         "/intern": "인턴·트레이니 공고",
         "/junior": "주니어·신입 공고",
+        "/content": "콘텐츠 산업 공고",
         "/saved": "관심·지원예정 공고",
         "/deadline": "7일 이내 마감 공고",
     }
@@ -81,7 +85,7 @@ def _list_message(command: str, entries: list[IndexEntry], *, limit: int = 8) ->
         blocks.append(
             f"{icon} {number}. {company}\n"
             f"{entry.title}\n"
-            f"{entry.sector} · {entry.seniority} · {_deadline_text(entry)} · 점수 {entry.relevance_score}"
+            f"{entry.content_subcategory or entry.sector} · {entry.seniority} · {_deadline_text(entry)} · 점수 {entry.relevance_score}"
         )
         urls = entry.application_urls or entry.source_urls
         if urls:

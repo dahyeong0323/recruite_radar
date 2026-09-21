@@ -1,9 +1,9 @@
-# Korea Finance Recruiting Radar
+# Korea Finance & Content Recruiting Radar
 
 Dependencies are locked in `uv.lock`. CI runs the full test suite, byte-compilation,
 and a production Docker build for every push and pull request.
 
-An Obsidian-canonical recruiting intelligence service for Korean VC, PE, and IB opportunities. Collectors normalize source facts, conservative dedupe joins only strong matches, deterministic rules remain available when OpenAI classification fails, and generated Markdown is committed to a dedicated Vault checkout.
+An Obsidian-canonical recruiting intelligence service for Korean finance and content-industry opportunities. Collectors normalize source facts, conservative dedupe joins only strong matches, deterministic rules remain available when OpenAI classification fails, and generated Markdown is committed to a dedicated Vault checkout.
 
 ## Canonical data model
 
@@ -59,7 +59,23 @@ KVCA, VCS, KOFIA, and Saramin remain isolated sources. Known IDs are source-scop
 
 Canonical notes carry a parser version. The nightly active refresh automatically includes notes written by an older parser, incomplete detail fallbacks, and pending classifications. This repairs affected existing records after a parser rollout instead of leaving them permanently hidden behind the known-ID cache.
 
-`ENABLED_SOURCES` defaults to `kvca,vcs,kofia,saramin`. Disable a source explicitly when its production credential is unavailable; for example, use `kvca,vcs,kofia` until a Saramin key is provisioned. Readiness fails closed when Saramin is enabled without `SARAMIN_ACCESS_KEY`.
+`ENABLED_SOURCES` defaults to `kvca,vcs,kofia,saramin`, preserving the existing finance deployment. Add `company` to activate official content-company collectors. Disable a source explicitly when its production credential is unavailable; for example, use `kvca,vcs,kofia,company` until a Saramin key is provisioned. Readiness fails closed when Saramin is enabled without `SARAMIN_ACCESS_KEY`.
+
+## Content radar
+
+`config/content_watchlist.yaml` is the runtime source of truth for content companies, aliases, official URLs, collector adapters, and fallback status. The first release provides official collectors for NAVER WEBTOON, Kakao Entertainment, SM Entertainment, HYBE, JYP Entertainment, MUNPIA, and Wavve. Other watchlist companies use Saramin fallback queries and are explicitly marked `fallback` rather than represented as official collectors.
+
+Content postings share the canonical Markdown database and are separated with `category: Content`. They retain lower-priority and currently ineligible internships for historical analysis. Deterministic classification records content subcategory, student eligibility evidence, graduation requirements, normalized internship duration, and `summer_fit` (`HIGH`, `POSSIBLE`, `LOW`, `INELIGIBLE`, or `UNKNOWN`). Finance scoring remains unchanged.
+
+Safe commands:
+
+```bash
+ENABLED_SOURCES=kvca,vcs,kofia,saramin,company python -m app.cli collect-all
+python -m app.cli collect --source company
+python -m app.cli preview-content
+```
+
+`preview-content` fetches official postings and prints Telegram-formatted previews without writing jobs or sending messages.
 
 ## Telegram
 
@@ -121,7 +137,8 @@ Zero successful source runs, stale collection watermarks, malformed canonical no
 | `SARAMIN_ACCESS_KEY` | Saramin Open API credential. |
 | `SARAMIN_DAILY_LIMIT` | Persistent daily safety ceiling; default 470. |
 | `SARAMIN_KEYWORDS_PER_RUN` | Rotating keyword window size; default 8. |
-| `ENABLED_SOURCES` | Comma-separated scheduled sources; defaults to all four supported sources. |
+| `SARAMIN_CONTENT_KEYWORDS_PER_RUN` | Additional rotating content-company fallback queries; default 3. Finance query capacity is preserved. |
+| `ENABLED_SOURCES` | Comma-separated scheduled sources; add `company` to enable official content collectors. |
 | `OPENAI_API_KEY` | Optional Responses API key. |
 | `OPENAI_MODEL_CLASSIFIER` | Optional classifier model; deterministic fallback remains enabled. |
 | `TZ` | Application timezone; default `Asia/Seoul`. |
@@ -132,4 +149,4 @@ All third-party exceptions pass through central redaction before health notes, r
 
 ## Configuration ownership
 
-`config/scoring.yaml` is loaded by the deterministic scoring runtime. `config/taxonomy.yaml` documents and validates the vocabulary whose executable schema is canonical in `app/models.py`. The candidate preference and watchlist example files are operator templates only and are intentionally not loaded; copying them does not change runtime behavior.
+`config/scoring.yaml` remains the finance scoring source. `config/content_scoring.yaml` and `config/content_watchlist.yaml` are loaded by the content runtime. `config/taxonomy.yaml` documents the vocabulary whose executable schema is canonical in `app/models.py`. Candidate preference and example watchlist files remain operator templates.
