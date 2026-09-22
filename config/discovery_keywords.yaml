@@ -1,0 +1,40 @@
+# Rotate a small window per two-hour run. A keyword is a discovery lead, not a category fact.
+keywords:
+  - {term: 인턴, category: common}
+  - {term: 체험형 인턴, category: common}
+  - {term: internship, category: common}
+  - {term: RA, category: common}
+  - {term: Research Assistant, category: common}
+  - {term: 투자, category: Finance}
+  - {term: VC, category: Finance}
+  - {term: 벤처캐피탈, category: Finance}
+  - {term: PE, category: Finance}
+  - {term: 사모펀드, category: Finance}
+  - {term: IB, category: Finance}
+  - {term: 기업금융, category: Finance}
+  - {term: M&A, category: Finance}
+  - {term: 자산운용, category: Finance}
+  - {term: 대체투자, category: Finance}
+  - {term: Corporate Finance, category: Finance}
+  - {term: Corporate Development, category: Finance}
+  - {term: 전략, category: common}
+  - {term: 글로벌사업, category: common}
+  - {term: 사업전략, category: common}
+  - {term: 콘텐츠, category: Content}
+  - {term: 엔터테인먼트, category: Content}
+  - {term: 웹툰, category: Content}
+  - {term: IP, category: Content}
+  - {term: 콘텐츠전략, category: Content}
+  - {term: OTT, category: Content}
+  - {term: 화장품, category: Beauty / Consumer}
+  - {term: 뷰티, category: Beauty / Consumer}
+  - {term: 코스메틱, category: Beauty / Consumer}
+  - {term: 소비재, category: Beauty / Consumer}
+  - {term: 브랜드 전략, category: Beauty / Consumer}
+  - {term: 브랜드, category: Beauty / Consumer}
+  - {term: 해외사업, category: common}
+  - {term: 게임, category: Gaming / Consumer Internet}
+  - {term: 게임사업, category: Gaming / Consumer Internet}
+  - {term: 게임전략, category: Gaming / Consumer Internet}
+  - {term: 플랫폼 사업, category: Gaming / Consumer Internet}
+  - {term: 플랫폼, category: common}

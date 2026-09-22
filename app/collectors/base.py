@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import re
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlparse
@@ -36,6 +37,7 @@ class ListEntry:
     posted_at: datetime | None = None
     deadline: datetime | None = None
     company: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _date_candidates(text: str) -> list[datetime]:

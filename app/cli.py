@@ -32,7 +32,7 @@ def _parser() -> argparse.ArgumentParser:
     fixture.add_argument("--fixture", type=Path, required=True)
     fixture.add_argument("--project-root", type=Path)
     collect = sub.add_parser("collect")
-    collect.add_argument("--source", choices=["kvca", "vcs", "kofia", "saramin", "company"], required=True)
+    collect.add_argument("--source", choices=["kvca", "vcs", "kofia", "saramin", "company", "linkareer", "jobkorea"], required=True)
     collect.add_argument("--project-root", type=Path)
     backfill = sub.add_parser("backfill")
     backfill.add_argument("--source", choices=["kvca", "vcs", "kofia"], required=True)

@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 CURRENT_PARSER_VERSION = 3
-SourceName = Literal["kvca", "vcs", "kofia", "saramin", "linkedin", "company"]
-Category = Literal["Finance", "Content"]
+SourceName = Literal["kvca", "vcs", "kofia", "saramin", "linkedin", "company", "linkareer", "jobkorea"]
+Category = Literal["Finance", "Content", "Beauty / Consumer", "Gaming / Consumer Internet"]
 SummerFit = Literal["HIGH", "POSSIBLE", "LOW", "INELIGIBLE", "UNKNOWN"]
 ContentSubcategory = Literal[
     "Content Strategy", "Global Strategy / Global Business", "IP Business",
@@ -149,6 +149,12 @@ class SourceState(BaseModel):
     newest_timestamp: datetime | None = None
     consecutive_failures: int = Field(default=0, ge=0)
     consecutive_refresh_failures: int = Field(default=0, ge=0)
+    pages_scanned: int = Field(default=0, ge=0)
+    postings_scanned: int = Field(default=0, ge=0)
+    new_postings_found: int = Field(default=0, ge=0)
+    detail_failures: int = Field(default=0, ge=0)
+    structural_drift: bool = False
+    blocked: bool = False
 
 
 class IndexEntry(BaseModel):
@@ -196,6 +202,9 @@ class RunMetrics(BaseModel):
     list_items_seen: int = 0
     new_source_items: int = 0
     detail_fetches: int = 0
+    pages_scanned: int = 0
+    postings_scanned: int = 0
+    detail_failures: int = 0
     canonical_jobs_created: int = 0
     canonical_jobs_updated: int = 0
     duplicates_merged: int = 0

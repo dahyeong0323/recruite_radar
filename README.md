@@ -77,6 +77,16 @@ python -m app.cli preview-content
 
 `preview-content` fetches official postings and prints Telegram-formatted previews without writing jobs or sending messages.
 
+## Broad discovery: Linkareer and JobKorea
+
+`linkareer` and `jobkorea` are independently selectable sources. Neither is added to the default `ENABLED_SOURCES`, so existing deployments keep their current behavior. The rotating search terms live in `config/discovery_keywords.yaml` and cover Finance, Content, Beauty / Consumer, and Gaming / Consumer Internet. New categories use deterministic scoring; Finance and Content retain their existing scoring paths. Canonical notes keep every discovery URL and source ID, while confirmed official facts take precedence during a merge.
+
+Linkareer reads the public search page's Next/Apollo data and fetches detail pages only for unseen, relevant junior listings. JobKorea parses the public job list and its JSON-LD detail pages, with its POST-backed pager. Both check `robots.txt` on each run, limit pages and detail requests, delay requests, and record blocked or structurally changed responses in source health. The discovery cursor and per-keyword watermarks are stored under `_System/discovery_state.json` in the selected Vault; failed runs retain the cursor.
+
+JobKorea's service terms restrict copying information obtained through the service without prior consent. For that reason `JOBKOREA_LICENSED_ACCESS=false` blocks automated requests by default; set it to `true` only after obtaining permission for this use. The collector is fixture-tested but should not be enabled on an unlicensed deployment. Linkareer also requires low-rate use and must not collect its restricted STEM section. Review both sites' current terms before changing collection volume.
+
+For an isolated Linkareer trial, set `DRY_RUN=true`, `ENABLED_SOURCES=linkareer`, and a disposable `DRY_RUN_VAULT_ROOT`, then run `python -m app.cli collect --source linkareer`. The default is two keywords, two pages per keyword, at most eight detail requests, and a two-second delay between requests. Tune `LINKAREER_KEYWORDS_PER_RUN`, `JOBKOREA_KEYWORDS_PER_RUN`, `DISCOVERY_MAX_PAGES`, `DISCOVERY_MAX_DETAILS`, and `DISCOVERY_DELAY_SECONDS` conservatively. Beauty and gaming jobs appear in their own generated dashboard sections and views.
+
 ## Telegram
 
 Outgoing delivery requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Immediate A alerts use `_System/notification_outbox.json`: a durable `sending` reservation is pushed before delivery, explicit failures remain retryable even when a later collection returns no items, and delivered material fingerprints are not emitted again after restart. Daily B digest and deadline reminder receipts are also persisted; long digests are chunked without dropping entries.
@@ -138,7 +148,10 @@ Zero successful source runs, stale collection watermarks, malformed canonical no
 | `SARAMIN_DAILY_LIMIT` | Persistent daily safety ceiling; default 470. |
 | `SARAMIN_KEYWORDS_PER_RUN` | Rotating keyword window size; default 8. |
 | `SARAMIN_CONTENT_KEYWORDS_PER_RUN` | Additional rotating content-company fallback queries; default 3. Finance query capacity is preserved. |
-| `ENABLED_SOURCES` | Comma-separated scheduled sources; add `company` to enable official content collectors. |
+| `ENABLED_SOURCES` | Comma-separated scheduled sources; add `company` or `linkareer` as needed. `jobkorea` requires licensed access. |
+| `LINKAREER_KEYWORDS_PER_RUN`, `JOBKOREA_KEYWORDS_PER_RUN` | Rotating search terms per run; default 2 each. |
+| `DISCOVERY_MAX_PAGES`, `DISCOVERY_MAX_DETAILS`, `DISCOVERY_DELAY_SECONDS` | Discovery request caps and inter-request delay; defaults 2, 8, and 2 seconds. |
+| `JOBKOREA_LICENSED_ACCESS` | Fail-closed JobKorea collection gate; default `false`. |
 | `OPENAI_API_KEY` | Optional Responses API key. |
 | `OPENAI_MODEL_CLASSIFIER` | Optional classifier model; deterministic fallback remains enabled. |
 | `TZ` | Application timezone; default `Asia/Seoul`. |

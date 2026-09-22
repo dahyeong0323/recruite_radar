@@ -30,14 +30,15 @@ Summer Fit: {classification.summer_fit} — {classification.summer_fit_reason or
 Score: {classification.relevance_score} · Actionability: {classification.actionability_score}
 링크: {item.source_url}"""
     else:
-        text = f"""🔥 {classification.priority} | {classification.sector} {classification.seniority.upper()} | {classification.relevance_score}
+        track = classification.sector if classification.category == "Finance" else classification.category
+        text = f"""🔥 {classification.priority} | {track} {classification.seniority.upper()} | {classification.relevance_score}
 
 {normalized.company or 'Unknown Company'}
 {normalized.title}
 
 📍 {item.raw_metadata.get('location') or '미상'}
 📅 마감 {deadline}
-💼 {classification.sector} / {classification.role_family}
+💼 {track} / {classification.role_family}
 🎓 {classification.seniority}
 
 왜 잡혔나

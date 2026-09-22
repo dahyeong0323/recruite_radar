@@ -8,6 +8,7 @@ from app.collectors.kvca import KvcaCollector
 from app.collectors.saramin import SaraminCollector
 from app.collectors.vcs import VcsCollector
 from app.collectors.company import CompanyCollector
+from app.collectors.discovery import JobKoreaCollector, LinkareerCollector
 from app.config import Settings
 from app.health.metrics import append_run_log
 from app.health.monitor import health_state, update_operation_state_async, update_source_state_async, write_health_note
@@ -62,7 +63,8 @@ class RadarService:
         return result.pushed
 
     def _collector(self, source: str):
-        return {"kvca": KvcaCollector, "vcs": VcsCollector, "kofia": KofiaCollector, "saramin": SaraminCollector, "company": CompanyCollector}[source](self.settings)
+        return {"kvca": KvcaCollector, "vcs": VcsCollector, "kofia": KofiaCollector, "saramin": SaraminCollector,
+                "company": CompanyCollector, "linkareer": LinkareerCollector, "jobkorea": JobKoreaCollector}[source](self.settings)
 
     def _refresh_ids(self, source: str) -> set[str]:
         entries = load_index(self.settings.index_path)
@@ -137,10 +139,15 @@ class RadarService:
             metrics = await self.pipeline.ingest(items, source=source)
             metrics.list_items_seen = len(items)
             metrics.new_source_items = len(items)
-            metrics.detail_fetches = len(items)
+            metrics.detail_fetches = getattr(collector, "detail_fetches", len(items))
+            metrics.pages_scanned = getattr(collector, "pages_scanned", 0)
+            metrics.postings_scanned = getattr(collector, "postings_scanned", len(items))
+            metrics.detail_failures = getattr(collector, "detail_failures", 0)
             metrics.errors.extend(getattr(collector, "errors", []))
             newest = max((item.posted_at for item in items if item.posted_at), default=None)
             batch_persisted = await self._persist(f"radar: persist {source} recruiting batch")
+            if batch_persisted and not metrics.errors and hasattr(collector, "commit_cursor"):
+                collector.commit_cursor()
             await update_operation_state_async(self.settings.state_path, "git", success=batch_persisted)
             durable = not metrics.errors and batch_persisted
             await update_source_state_async(
@@ -148,6 +155,12 @@ class RadarService:
                 seen_ids=[item.source_id for item in items] if durable else None,
                 newest_timestamp=newest if durable else None,
                 run_kind="refresh" if refresh else "collection",
+                discovery_stats={
+                    "pages_scanned": metrics.pages_scanned, "postings_scanned": metrics.postings_scanned,
+                    "new_postings_found": len(items), "detail_failures": metrics.detail_failures,
+                    "structural_drift": getattr(collector, "structural_drift", False),
+                    "blocked": getattr(collector, "blocked", False),
+                } if source in {"linkareer", "jobkorea"} else None,
             )
             state_persisted = await self._persist(f"radar: record {source} collection state")
             await update_operation_state_async(self.settings.state_path, "git", success=state_persisted)
@@ -183,7 +196,12 @@ class RadarService:
                 metrics.errors.append("git: final health push failed")
             return metrics.model_dump(mode="json")
         except Exception as error:  # source isolation is intentional
-            await update_source_state_async(self.settings.state_path, source, success=False, run_kind="refresh" if refresh else "collection")
+            await update_source_state_async(self.settings.state_path, source, success=False, run_kind="refresh" if refresh else "collection",
+                discovery_stats={"pages_scanned": getattr(collector, "pages_scanned", 0),
+                                 "postings_scanned": getattr(collector, "postings_scanned", 0),
+                                 "new_postings_found": 0, "detail_failures": getattr(collector, "detail_failures", 0),
+                                 "structural_drift": getattr(collector, "structural_drift", False),
+                                 "blocked": getattr(collector, "blocked", False)} if source in {"linkareer", "jobkorea"} else None)
             safe = safe_exception(source, error, self.settings.secrets)
             write_health_note(self.settings.radar_root, state=self._health_state(), source_rows=self._health_rows(), notes=[safe], secrets=self.settings.secrets)
             await self._persist(f"radar: record {source} failure")
@@ -245,7 +263,8 @@ class RadarService:
                     continue
                 finance_alert = entry.front_office and entry.seniority in {"Intern", "Trainee"} and entry.sector in {"VC", "CVC", "PE", "IB"}
                 content_alert = entry.category == "Content" and entry.seniority in {"Intern", "Trainee"}
-                if not (finance_alert or content_alert):
+                consumer_alert = entry.category in {"Beauty / Consumer", "Gaming / Consumer Internet"} and entry.seniority in {"Intern", "Trainee"}
+                if not (finance_alert or content_alert or consumer_alert):
                     continue
                 delivery = load_delivery_state(outbox_path).get("jobs", {}).get(entry.id) or {}
                 alert_fingerprint = entry.material_fingerprint or entry.fingerprint

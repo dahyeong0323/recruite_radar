@@ -77,8 +77,8 @@ def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
 
 def canonical_id(item: SourceItem) -> str:
     day = (item.posted_at or item.discovered_at).date().isoformat()
-    from app.pipeline.content import is_content_item
-    prefix = "KRCNT" if is_content_item(item) else "KRFIN"
+    from app.pipeline.discovery import inferred_category
+    prefix = {"Content": "KRCNT", "Beauty / Consumer": "KRBC", "Gaming / Consumer Internet": "KRGM"}.get(inferred_category(item), "KRFIN")
     return f"{prefix}-{day.replace('-', '')}-{short_hash(item.source, item.source_id, normalized_title(item.title_raw))}"
 
 
@@ -126,9 +126,9 @@ def _compare_title(title: str, company: str | None) -> str:
 
 def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
     exact = source_key(item)
+    from app.pipeline.discovery import inferred_category
+    incoming_category = inferred_category(item) or "Finance"
     for entry in entries:
-        from app.pipeline.content import is_content_item
-        incoming_category = "Content" if is_content_item(item) else "Finance"
         if entry.category != incoming_category:
             continue
         known_keys = {f"{source}:{source_id}" for source, source_id in entry.source_ids.items() if source_id}
@@ -143,6 +143,8 @@ def decide(item: SourceItem, entries: list[IndexEntry]) -> DedupeDecision:
     normalized = normalize_item(item)
     best: tuple[float, IndexEntry] | None = None
     for entry in entries:
+        if entry.category != incoming_category:
+            continue
         if not normalized.company_normalized or not entry.company:
             continue
         if normalized.company_normalized != normalize_company(entry.company, ALIASES):
@@ -193,8 +195,8 @@ def semantic_duplicate_judge(item: SourceItem, entry: IndexEntry) -> bool:
     function later without changing the canonical writer contract.
     """
     normalized = normalize_item(item)
-    from app.pipeline.content import is_content_item
-    if entry.category != ("Content" if is_content_item(item) else "Finance"):
+    from app.pipeline.discovery import inferred_category
+    if entry.category != (inferred_category(item) or "Finance"):
         return False
     if not normalized.company_normalized or not entry.company:
         return False

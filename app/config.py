@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SUPPORTED_SOURCES = ("kvca", "vcs", "kofia", "saramin")
-ALL_SOURCES = (*SUPPORTED_SOURCES, "company")
+ALL_SOURCES = (*SUPPORTED_SOURCES, "company", "linkareer", "jobkorea")
 
 
 def _load_dotenv(project_root: Path) -> None:
@@ -62,6 +62,12 @@ class Settings:
     saramin_daily_limit: int = 470
     saramin_keywords_per_run: int = 8
     saramin_content_keywords_per_run: int = 3
+    linkareer_keywords_per_run: int = 2
+    jobkorea_keywords_per_run: int = 2
+    discovery_max_pages: int = 2
+    discovery_max_details: int = 8
+    discovery_delay_seconds: float = 2.0
+    jobkorea_licensed_access: bool = False
     scheduler_enabled: bool = True
     http_timeout_seconds: float = 15.0
     http_retries: int = 3
@@ -139,6 +145,12 @@ def load_settings(project_root: Path | None = None) -> Settings:
         saramin_daily_limit=int(os.getenv("SARAMIN_DAILY_LIMIT", "470")),
         saramin_keywords_per_run=int(os.getenv("SARAMIN_KEYWORDS_PER_RUN", "8")),
         saramin_content_keywords_per_run=int(os.getenv("SARAMIN_CONTENT_KEYWORDS_PER_RUN", "3")),
+        linkareer_keywords_per_run=int(os.getenv("LINKAREER_KEYWORDS_PER_RUN", "2")),
+        jobkorea_keywords_per_run=int(os.getenv("JOBKOREA_KEYWORDS_PER_RUN", "2")),
+        discovery_max_pages=int(os.getenv("DISCOVERY_MAX_PAGES", "2")),
+        discovery_max_details=int(os.getenv("DISCOVERY_MAX_DETAILS", "8")),
+        discovery_delay_seconds=float(os.getenv("DISCOVERY_DELAY_SECONDS", "2")),
+        jobkorea_licensed_access=_bool_env("JOBKOREA_LICENSED_ACCESS", False),
         scheduler_enabled=_bool_env("SCHEDULER_ENABLED", True),
         enabled_sources=_enabled_sources_env(),
     )

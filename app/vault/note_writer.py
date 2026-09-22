@@ -16,7 +16,8 @@ from app.utils.text import clean_text, title_similarity
 from app.vault.frontmatter import atomic_write_text, parse_frontmatter, render_frontmatter
 
 
-SOURCE_KEYS = ("kvca", "vcs", "kofia", "saramin", "linkedin", "company")
+SOURCE_KEYS = ("kvca", "vcs", "kofia", "saramin", "linkedin", "company", "linkareer", "jobkorea")
+SOURCE_TRUST = {"company": 5, "kvca": 4, "vcs": 4, "kofia": 4, "saramin": 3, "jobkorea": 2, "linkareer": 1, "linkedin": 1}
 
 
 def _iso(value: Any) -> str | None:
@@ -97,8 +98,9 @@ def build_metadata(
     now = item.discovered_at
     existing = existing or {}
     old_source_ids = existing.get("source_ids") or {}
-    official_existing = existing.get("source_primary") == "company" or bool(old_source_ids.get("company"))
-    preserve_official = official_existing and item.source != "company"
+    current_primary = str(existing.get("source_primary") or ("company" if old_source_ids.get("company") else ""))
+    preserve_official = bool(existing and SOURCE_TRUST.get(current_primary, 0) > SOURCE_TRUST.get(item.source, 0))
+    incoming_preferred = not preserve_official and SOURCE_TRUST.get(item.source, 0) > SOURCE_TRUST.get(current_primary, 0)
     source_id_history = {
         key: list(dict.fromkeys(str(value) for value in values if value))
         for key, values in (existing.get("source_id_history") or {}).items()
@@ -115,12 +117,13 @@ def build_metadata(
     source_ids[item.source] = item.source_id
     source_urls = list(existing.get("source_urls") or [])
     if item.source_url not in source_urls:
-        source_urls = [item.source_url, *source_urls] if item.source == "company" else [*source_urls, item.source_url]
+        source_urls = [item.source_url, *source_urls] if incoming_preferred or not existing else [*source_urls, item.source_url]
     application_urls = _unique_urls([*(existing.get("application_urls") or []), *(item.raw_metadata.get("application_urls") or [])])
     attachments = _merge_attachments(existing.get("attachments"), item.attachments)
     location = existing.get("location") if preserve_official and existing.get("location") else item.raw_metadata.get("location") or existing.get("location")
-    deadline_date = _date_only(item.deadline) or _date_only(existing.get("deadline"))
-    status = "closed" if item.active is False or (deadline_date is not None and deadline_date < today()) else "active" if item.active is True else existing.get("status", "active")
+    deadline_date = _date_only(existing.get("deadline")) if preserve_official and existing.get("deadline") else _date_only(item.deadline) or _date_only(existing.get("deadline"))
+    effective_active = None if preserve_official else item.active
+    status = "closed" if effective_active is False or (deadline_date is not None and deadline_date < today()) else "active" if effective_active is True else existing.get("status", "active")
     # A failed LLM may retain an old label only when the source does not contradict it.
     grounded = validate_source_result(item, classification)
     contradictory = bool(existing and (
@@ -138,7 +141,7 @@ def build_metadata(
     conversion_possible = existing.get("conversion_possible") if pending and existing.get("conversion_possible") is not None else classification.conversion_possible if classification.conversion_possible is not None else existing.get("conversion_possible")
     title = normalized.title
     existing_title = clean_text(str(existing.get("title") or ""))
-    if existing_title and item.source != "company" and official_existing:
+    if existing_title and preserve_official:
         title = existing_title
     elif existing_title and not old_source_ids.get(item.source) and title_similarity(existing_title, title) >= 0.60:
         title = existing_title
@@ -155,7 +158,7 @@ def build_metadata(
                 "experience_max": classification.experience_max if classification.experience_max is not None else existing.get("experience_max"),
             }
     )
-    scored = merged_classification if classification.category == "Content" else apply_scores(
+    scored = merged_classification if classification.category != "Finance" else apply_scores(
         merged_classification, active=status == "active", location=location,
         deadline=_date_only(item.deadline) or _date_only(existing.get("deadline")),
         requirements_present=bool(item.body_text) or bool(existing),
@@ -166,8 +169,8 @@ def build_metadata(
     confidence = float(existing.get("classification_confidence") or 0) if pending and existing else classification.classification_confidence
     metadata: dict[str, Any] = {
         "id": job_id or existing.get("id") or canonical_id(item),
-        "company": (normalized.company if item.source == "company" or not official_existing else existing.get("company")) or existing.get("company"),
-        "company_normalized": (normalized.company_normalized if item.source == "company" or not official_existing else existing.get("company_normalized")) or existing.get("company_normalized"),
+        "company": (existing.get("company") if preserve_official else normalized.company) or existing.get("company"),
+        "company_normalized": (existing.get("company_normalized") if preserve_official else normalized.company_normalized) or existing.get("company_normalized"),
         "title": title,
         "category": existing.get("category", classification.category) if preserve_official else classification.category,
         "content_subcategory": existing.get("content_subcategory") if preserve_official else classification.content_subcategory,
@@ -183,11 +186,11 @@ def build_metadata(
         "classification_confidence": confidence,
         "status": status,
         "user_status": existing.get("user_status", "unreviewed"),
-        "posted_at": _date(item.posted_at) or existing.get("posted_at"),
-        "application_start": _date(item.application_start) or existing.get("application_start"),
-        "start_date": _iso(item.start_date) or existing.get("start_date"),
-        "end_date": _iso(item.end_date) or existing.get("end_date"),
-        "deadline": _date(item.deadline) or existing.get("deadline"),
+        "posted_at": existing.get("posted_at") if preserve_official and existing.get("posted_at") else _date(item.posted_at) or existing.get("posted_at"),
+        "application_start": existing.get("application_start") if preserve_official and existing.get("application_start") else _date(item.application_start) or existing.get("application_start"),
+        "start_date": existing.get("start_date") if preserve_official and existing.get("start_date") else _iso(item.start_date) or existing.get("start_date"),
+        "end_date": existing.get("end_date") if preserve_official and existing.get("end_date") else _iso(item.end_date) or existing.get("end_date"),
+        "deadline": existing.get("deadline") if preserve_official and existing.get("deadline") else _date(item.deadline) or existing.get("deadline"),
         "first_seen_at": existing.get("first_seen_at") or _iso(now),
         "last_seen_at": _iso(now),
         "last_checked_at": _iso(now),
@@ -201,21 +204,21 @@ def build_metadata(
         "internship_duration": existing.get("internship_duration") if preserve_official else classification.internship_duration or existing.get("internship_duration"),
         "duration_min_weeks": existing.get("duration_min_weeks") if preserve_official else classification.duration_min_weeks if classification.duration_min_weeks is not None else existing.get("duration_min_weeks"),
         "duration_max_weeks": existing.get("duration_max_weeks") if preserve_official else classification.duration_max_weeks if classification.duration_max_weeks is not None else existing.get("duration_max_weeks"),
-        "summer_fit": existing.get("summer_fit", "UNKNOWN") if preserve_official else classification.summer_fit if classification.category == "Content" else existing.get("summer_fit", "UNKNOWN"),
+        "summer_fit": existing.get("summer_fit", "UNKNOWN") if preserve_official else classification.summer_fit if classification.category != "Finance" else existing.get("summer_fit", "UNKNOWN"),
         "summer_fit_reason": existing.get("summer_fit_reason") if preserve_official else classification.summer_fit_reason or existing.get("summer_fit_reason"),
         "required_skills": existing.get("required_skills") or [] if preserve_official else classification.required_skills or existing.get("required_skills") or [],
         "preferred_skills": existing.get("preferred_skills") or [] if preserve_official else classification.preferred_skills or existing.get("preferred_skills") or [],
         "conversion_possible": conversion_possible,
         "historical": bool(existing.get("historical", False) or item.raw_metadata.get("historical", False)),
-        "source_primary": "company" if item.source == "company" or official_existing else existing.get("source_primary") or item.source,
+        "source_primary": current_primary if preserve_official else item.source if incoming_preferred or not current_primary else current_primary,
         "source_ids": source_ids,
         "source_id_history": source_id_history,
-        "detail_complete": not bool(item.raw_metadata.get("detail_error")),
+        "detail_complete": bool(existing.get("detail_complete")) if preserve_official else not bool(item.raw_metadata.get("detail_error")) or bool(existing.get("detail_complete")),
         "parser_version": CURRENT_PARSER_VERSION,
         "source_urls": source_urls,
         "application_urls": application_urls,
         "attachments": attachments,
-        "classification_status": classification.status,
+        "classification_status": existing.get("classification_status", classification.status) if preserve_official else classification.status,
         "detail_error": item.raw_metadata.get("detail_error"),
         "telegram_alerted_at": existing.get("telegram_alerted_at"),
         "telegram_alert_fingerprint": existing.get("telegram_alert_fingerprint"),
@@ -291,7 +294,12 @@ def render_job_note(
             current_block = f"[current source: {item.source}]\n{source_text}"
             # Keep the full prior evidence even when a transient response is a
             # strict subset of it. Avoid adding the same current snapshot twice.
-            source_text = previous_source if current_block in previous_source else f"{previous_source}\n\n{current_block}"
+            if current_block in previous_source:
+                source_text = previous_source
+            elif metadata.get("source_primary") == item.source and item.source in {"company", "saramin", "kvca", "vcs", "kofia"}:
+                source_text = f"{current_block}\n\n{previous_source}"
+            else:
+                source_text = f"{previous_source}\n\n{current_block}"
     body = f"""# {metadata.get('company') or 'Unknown Company'} — {metadata.get('title') or item.title_raw}
 
 ## 한눈에 보기

@@ -11,7 +11,7 @@ from app.utils.security import redact
 from app.utils.clock import now
 
 
-def update_source_state(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection") -> dict[str, Any]:
+def update_source_state(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection", discovery_stats: dict[str, Any] | None = None) -> dict[str, Any]:
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"sources": {}}
     source_state = SourceState.model_validate(state.setdefault("sources", {}).get(source, {}))
     if run_kind == "refresh" and success:
@@ -23,17 +23,19 @@ def update_source_state(state_path: Path, source: str, *, success: bool, seen_id
         source_state = source_state.model_copy(update={"last_success_at": now(), "recent_ids": merged_ids, "newest_timestamp": newest_timestamp, "consecutive_failures": 0})
     else:
         source_state = source_state.model_copy(update={"consecutive_failures": source_state.consecutive_failures + 1})
+    if discovery_stats:
+        source_state = source_state.model_copy(update={key: value for key, value in discovery_stats.items() if key in SourceState.model_fields})
     state["sources"][source] = source_state.model_dump(mode="json")
     state["updated_at"] = now().isoformat()
     atomic_write_text(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
     return state
 
 
-async def update_source_state_async(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection") -> dict[str, Any]:
+async def update_source_state_async(state_path: Path, source: str, *, success: bool, seen_ids: list[str] | None = None, newest_timestamp=None, run_kind: str = "collection", discovery_stats: dict[str, Any] | None = None) -> dict[str, Any]:
     from app.vault.repository import GLOBAL_VAULT_LOCK
 
     async with GLOBAL_VAULT_LOCK:
-        return update_source_state(state_path, source, success=success, seen_ids=seen_ids, newest_timestamp=newest_timestamp, run_kind=run_kind)
+        return update_source_state(state_path, source, success=success, seen_ids=seen_ids, newest_timestamp=newest_timestamp, run_kind=run_kind, discovery_stats=discovery_stats)
 
 
 def update_operation_state(state_path: Path, operation: str, *, success: bool) -> dict[str, Any]:

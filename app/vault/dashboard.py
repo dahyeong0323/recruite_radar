@@ -31,6 +31,8 @@ def render_dashboard(entries: list[IndexEntry]) -> str:
     urgent = [entry for entry in active if (days_until(entry.deadline) is not None and 0 <= days_until(entry.deadline) <= 7)]
     finance_active = [entry for entry in active if entry.category == "Finance"]
     content_active = [entry for entry in active if entry.category == "Content"]
+    beauty_active = [entry for entry in active if entry.category == "Beauty / Consumer"]
+    gaming_active = [entry for entry in active if entry.category == "Gaming / Consumer Internet"]
     counts = Counter(entry.sector for entry in finance_active)
     content_counts = Counter(entry.content_subcategory or "Other Content" for entry in content_active)
     statuses = Counter(entry.user_status for entry in entries)
@@ -69,6 +71,14 @@ def render_dashboard(entries: list[IndexEntry]) -> str:
 
 {_table(content_active)}
 
+## Active Beauty / Consumer Jobs ({len(beauty_active)})
+
+{_table(beauty_active)}
+
+## Active Gaming / Consumer Internet Jobs ({len(gaming_active)})
+
+{_table(gaming_active)}
+
 ## Statistics
 
 | Sector | Count |
@@ -98,6 +108,8 @@ def render_dashboard(entries: list[IndexEntry]) -> str:
 - [[04_Will_Apply]]
 - [[05_Applied]]
 - [[06_Content]]
+- [[07_Beauty_Consumer]]
+- [[08_Gaming_Consumer_Internet]]
 """
 
 
@@ -115,6 +127,8 @@ def write_dashboards(radar_root: Path, entries: list[IndexEntry]) -> None:
         "04_Will_Apply.md": [entry for entry in entries if entry.user_status == "will_apply"],
         "05_Applied.md": [entry for entry in entries if entry.user_status == "applied"],
         "06_Content.md": [entry for entry in active if entry.category == "Content"],
+        "07_Beauty_Consumer.md": [entry for entry in active if entry.category == "Beauty / Consumer"],
+        "08_Gaming_Consumer_Internet.md": [entry for entry in active if entry.category == "Gaming / Consumer Internet"],
     }
     for filename, view_entries in views.items():
         atomic_write_text(radar_root / filename, render_filtered_view(filename.removesuffix(".md"), view_entries))
