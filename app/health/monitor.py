@@ -97,7 +97,7 @@ def health_state(
             malformed = int(json.loads(index_errors_path.read_text(encoding="utf-8")).get("count", 0))
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             malformed = 1
-    if any(age is None or age > timedelta(hours=5) for age in ages) or any(value >= 1 for value in failures) or git_push_failures > 0 or telegram_failures > 0 or pending_classifications > 0 or malformed > 0:
+    if any(age is None or age > timedelta(hours=5) for age in ages) or any(value >= 1 for value in failures) or any(value.get("detail_failures", 0) > 0 for value in sources.values()) or git_push_failures > 0 or telegram_failures > 0 or pending_classifications > 0 or malformed > 0:
         return "DEGRADED"
     return "HEALTHY"
 

@@ -9,7 +9,7 @@ import pytest
 
 import app.service as service_module
 from app.health.metrics import append_run_log
-from app.health.monitor import update_source_state, write_health_note
+from app.health.monitor import health_state, update_source_state, write_health_note
 from app.models import ClassificationResult, IndexEntry, RunMetrics, SourceItem
 from app.pipeline.classify import rule_based_classify
 from app.service import RadarService
@@ -122,6 +122,38 @@ def test_partial_ingestion_preserves_previous_watermark(settings):
     assert result["errors"]
     assert after["last_success_at"] == before
     assert after["consecutive_failures"] == 1
+
+
+def test_discovery_detail_fallback_advances_cursor_and_reports_degraded(settings):
+    settings.state_path.parent.mkdir(parents=True, exist_ok=True)
+
+    class PartialDetailCollector(FakeCollector):
+        pages_scanned = 2
+        postings_scanned = 5
+        detail_fetches = 1
+        detail_failures = 1
+        structural_drift = False
+        blocked = False
+        committed = False
+
+        def commit_cursor(self):
+            self.committed = True
+
+    collector = PartialDetailCollector([], errors=["short detail; list facts preserved"])
+    service = RadarService(replace(settings, enabled_sources=("linkareer",)))
+    service._collector = lambda source: collector
+
+    async def ingest(items, source=None):
+        return RunMetrics(run_id="partial-detail", started_at=datetime.now().astimezone(),
+                          finished_at=datetime.now().astimezone(), source=source)
+
+    service.pipeline.ingest = ingest
+    result = asyncio.run(service.collect_source("linkareer"))
+    row = json.loads(settings.state_path.read_text(encoding="utf-8"))["sources"]["linkareer"]
+    assert collector.committed
+    assert row["last_success_at"] and row["consecutive_failures"] == 0
+    assert row["detail_failures"] == 1 and result["errors"]
+    assert health_state(settings.state_path, enabled_sources=("linkareer",)) == "DEGRADED"
 
 
 def test_alert_is_not_sent_when_batch_persistence_fails(settings):
@@ -279,6 +311,27 @@ def test_daily_digest_does_not_repeat_unchanged_b_job(settings, monkeypatch):
 
     asyncio.run(run())
     assert len(FakeTelegram.messages) == 1
+
+
+def test_daily_digest_identifies_linkareer_posting(settings, monkeypatch):
+    candidate = source_item(source="linkareer", source_id="linkareer-b")
+    path, metadata = write_job_note(settings.radar_root, candidate, rule_based_classify(candidate))
+    metadata["priority"] = "B"
+    metadata["status"] = "active"
+    atomic_write_text(path, render_frontmatter(metadata) + "\n" + parse_frontmatter(path.read_text(encoding="utf-8"))[1])
+    rebuild_index(settings.radar_root)
+    prod = replace(settings, dry_run=False, telegram_bot_token="fake-token", telegram_chat_id="1")
+    FakeTelegram.messages = []
+    FakeTelegram.fail = False
+    monkeypatch.setattr(service_module, "TelegramClient", FakeTelegram)
+    service = RadarService(prod)
+
+    async def persist(message):
+        return True
+
+    service._persist = persist
+    asyncio.run(service._send_digest_unlocked())
+    assert "[LINKAREER] B |" in FakeTelegram.messages[0]
 
 
 def test_daily_digest_does_not_repeat_after_unchanged_refresh(settings, monkeypatch):

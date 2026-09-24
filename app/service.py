@@ -143,13 +143,14 @@ class RadarService:
             metrics.pages_scanned = getattr(collector, "pages_scanned", 0)
             metrics.postings_scanned = getattr(collector, "postings_scanned", len(items))
             metrics.detail_failures = getattr(collector, "detail_failures", 0)
+            ingestion_failed = bool(metrics.errors)
             metrics.errors.extend(getattr(collector, "errors", []))
             newest = max((item.posted_at for item in items if item.posted_at), default=None)
             batch_persisted = await self._persist(f"radar: persist {source} recruiting batch")
-            if batch_persisted and not metrics.errors and hasattr(collector, "commit_cursor"):
+            if batch_persisted and not ingestion_failed and hasattr(collector, "commit_cursor"):
                 collector.commit_cursor()
             await update_operation_state_async(self.settings.state_path, "git", success=batch_persisted)
-            durable = not metrics.errors and batch_persisted
+            durable = not ingestion_failed and batch_persisted
             await update_source_state_async(
                 self.settings.state_path, source, success=durable,
                 seen_ids=[item.source_id for item in items] if durable else None,
@@ -391,10 +392,10 @@ class RadarService:
             lines = ["📡 Korea Finance & Content Recruiting Radar — Daily Digest", ""]
             if pending_a:
                 lines.append("즉시 알림 미전송 A 공고")
-                lines.extend(f"{'[CONTENT] ' if entry.category == 'Content' else ''}A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.summer_fit if entry.category == 'Content' else entry.sector}" for entry in pending_a)
+                lines.extend(f"{'[LINKAREER] ' if entry.source_ids.get('linkareer') else ''}{'[CONTENT] ' if entry.category == 'Content' else ''}A | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.summer_fit if entry.category == 'Content' else entry.sector}" for entry in pending_a)
                 lines.append("")
             lines.append("신규/미확인 B 공고")
-            lines.extend(f"{'[CONTENT] ' if entry.category == 'Content' else ''}B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected)
+            lines.extend(f"{'[LINKAREER] ' if entry.source_ids.get('linkareer') else ''}{'[CONTENT] ' if entry.category == 'Content' else ''}B | {entry.company or 'Unknown'} — {entry.title} | {entry.deadline or '마감 미상'} | {entry.relevance_score}" for entry in selected)
             lines.extend(["", f"통계: B {len(selected)}개 · A 알림대기 {len(pending_a)}개 · 전체 active {sum(1 for entry in entries if entry.status == 'active')}개"])
             chunks: list[str] = []
             current = ""

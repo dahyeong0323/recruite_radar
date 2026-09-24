@@ -192,6 +192,15 @@ def test_consumer_dashboard_and_telegram_preview(settings):
     assert markup["inline_keyboard"][0][0]["url"] == beauty.source_url
 
 
+def test_linkareer_alert_identifies_source(settings):
+    from app.telegram.formatter import job_alert
+
+    candidate = item("linkareer", "finance-1", "Finance", "새로운벤처캐피탈")
+    classification = asyncio.run(classify_item(candidate, settings))
+    message, _ = job_alert("KRFIN-test", candidate, classification)
+    assert message.startswith("[LINKAREER]")
+
+
 @pytest.mark.parametrize("first,second", [("company", "linkareer"), ("linkareer", "company"), ("company", "jobkorea"), ("jobkorea", "company"), ("linkareer", "jobkorea"), ("jobkorea", "linkareer")])
 def test_cross_source_canonical_merge_preserves_trust(settings, first, second):
     official = item("company", "official:1", "Content", "NAVER WEBTOON", "콘텐츠 전략 인턴", datetime(2026, 10, 30, tzinfo=timezone.utc))

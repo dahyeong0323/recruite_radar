@@ -53,4 +53,6 @@ Confidence {round(classification.classification_confidence * 100)}%"""
             [{"text": "⭐ 관심", "callback_data": f"interest:{job_id}"}, {"text": "📝 지원예정", "callback_data": f"plan:{job_id}"}, {"text": "🙈 무시", "callback_data": f"ignore:{job_id}"}],
         ]
     }
+    if item.source == "linkareer":
+        text = f"[LINKAREER] {text}"
     return text, markup
