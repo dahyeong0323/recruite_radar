@@ -204,7 +204,7 @@ def html_detail(html, config, url, as_of, source_id=None):
         facts.schedule_raw = date_text
         facts.date_precision = 'time' if facts.start_date and facts.start_time else 'date' if facts.start_date else 'unknown'
         facts.city, facts.venue = city_name(place), place or None
-        facts.country = 'CH' if facts.city else None
+        facts.country = country_name(place) or ('CH' if facts.city else None)
         facts.attendance_mode = 'in_person' if facts.city else 'online' if place.casefold() == 'online' else 'unknown'
         if 'Participation is completely free' in text: facts.ticket_price_min = 0
     if config.adapter == 'mofa':

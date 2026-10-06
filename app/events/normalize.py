@@ -40,7 +40,7 @@ def parse_dates(raw: str) -> tuple[date | None, date | None]:
     """Explicit year only; never turn a publication date into an event date."""
     candidates: list[date] = []
     patterns = [
-        (r'(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})', lambda m: (int(m[1]), int(m[2]), int(m[3]))),
+        (r'(?<![\d./])(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})(?!\d)', lambda m: (int(m[1]), int(m[2]), int(m[3]))),
         (r'\b(20\d{2})(\d{2})(\d{2})\b', lambda m: (int(m[1]), int(m[2]), int(m[3]))),
         (r'\b(\d{1,2})[./](\d{1,2})[./](20\d{2})\b', lambda m: (int(m[3]), int(m[2]), int(m[1]))),
     ]
@@ -96,6 +96,7 @@ def country_name(raw: str) -> str | None:
     patterns = [(r'\bswitzerland\b|\bschweiz\b|\bsuisse\b|스위스|^ch$', 'CH'),
                 (r'\bgermany\b|\bdeutschland\b|독일|^de$', 'DE'),
                 (r'\bfrance\b|프랑스|^fr$', 'FR'),
+                (r'\b(?:italy|italia|italien|italie)\b|이탈리아|^it$', 'IT'),
                 (r'\b(?:usa|united states)\b|미국|^us$', 'US'),
                 (r'\bindia\b|인도|^in$', 'IN'),
                 (r'\b(?:south korea|korea)\b|대한민국|한국|^kr$', 'KR')]

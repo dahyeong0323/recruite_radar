@@ -52,9 +52,24 @@ def test_explicit_dates(text, expected):
 
 def test_multiday_and_dst():
     assert parse_dates('10.–14.03.2027') == (date(2027,3,10),date(2027,3,14))
+    assert parse_dates('06.10.2026  - 08.10.2026') == (date(2026,10,6),date(2026,10,8))
+    assert parse_dates('05/11/2026 – 06/11/2026') == (date(2026,11,5),date(2026,11,6))
     assert local_datetime('2026-10-25T02:30:00') is None
     assert local_datetime('2026-03-29T02:30:00') is None
     assert local_datetime('2026-10-25T02:30:00+02:00') is not None
+
+
+def test_startupticker_foreign_venue_and_numeric_range(settings):
+    cfg = next(c for c in sources(settings) if c.id == 'startupticker')
+    html = '''<h1>SWISS Pavilion @ CPhI Worldwide</h1><main class="main-content"><article class="item">
+      <div><h3>Date</h3>06.10.2026 - 08.10.2026</div>
+      <div><h3>Location</h3>Fiera Milano, Italy</div></article></main>'''
+    row = html_detail(html, cfg, 'https://www.startupticker.ch/en/events/cphi', STAMP)[0]
+    assert (row.facts.start_date, row.facts.end_date) == (date(2026,10,6),date(2026,10,8))
+    assert row.facts.country == 'IT' and not evaluate(canonical(row), settings).swiss_verified
+    row = html_detail(html.replace('Fiera Milano, Italy', 'Geneva, United States'), cfg,
+                      'https://www.startupticker.ch/en/events/foreign', STAMP)[0]
+    assert row.facts.country == 'US' and not evaluate(canonical(row), settings).swiss_verified
 
 
 def test_real_friends_parser(settings):
