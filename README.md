@@ -271,3 +271,20 @@ Source age thresholds follow its configured cadence (2x degraded, 4x failed).
 Monthly JSONL logs, malformed-note diagnostics, queue backlog and uncertain
 deliveries are under `_System/Events`. CI runs the existing Job suite plus Event
 fixture, lifecycle, dedupe, persistence, scheduler and delivery failure tests.
+
+The first Event audit fixes preserve Friends of Korea occurrence IDs across
+schedule edits (including legacy date-based IDs), and isolate detail refresh
+state from list cursors/cadence. Notification generation and delivery both enforce
+`preferences.yaml` countries; `adjacent_countries_enabled` additionally enables
+`adjacent_countries` (defaults DE, FR, IT, AT, LI). Important updates to already
+followed/notified events can still report a move outside the discovery region.
+Cancelled/completed/postponed events cannot receive ordinary new, digest or
+reminder messages, and old fingerprints cannot deliver stale reminders.
+
+On startup the audit repair reprocesses saved MOFA bodies and Startupticker
+schedule evidence once, with exact originals in `_System/Events/Audit_Backups/v1`.
+It preserves IDs, user notes/status, historical verification timestamps and
+notification intents; it does not claim a fresh network verification or create
+repair alerts. Every corrected note records its before/after facts. Inspect the
+plan with `python -m app.cli events repair`; apply explicitly with `--apply`.
+The canonical `audit_repair_version` marker makes restart recovery idempotent.

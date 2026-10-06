@@ -44,7 +44,7 @@ def _parser() -> argparse.ArgumentParser:
         scheduled = sub.add_parser(name)
         scheduled.add_argument("--project-root", type=Path)
     events = sub.add_parser("events")
-    events.add_argument("action", choices=["collect", "refresh", "search", "lifecycle", "outbox", "digest", "reminders", "preview", "health", "rebuild", "migrate", "ingest", "resend", "merge"])
+    events.add_argument("action", choices=["collect", "refresh", "search", "lifecycle", "outbox", "digest", "reminders", "preview", "health", "rebuild", "migrate", "repair", "ingest", "resend", "merge"])
     events.add_argument("--project-root", type=Path)
     events.add_argument("--source")
     events.add_argument("--fixture", type=Path)

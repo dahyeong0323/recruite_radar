@@ -38,6 +38,9 @@ def canonical_url(url: str) -> str:
 
 def parse_dates(raw: str) -> tuple[date | None, date | None]:
     """Explicit year only; never turn a publication date into an event date."""
+    # Remove complete clock tokens before range matching, otherwise the minutes
+    # in "17:30 - 15.12.2026" become a fictitious 30 December start date.
+    raw = re.sub(r'(?<!\d)(?:[01]?\d|2[0-3])[:h][0-5]\d(?::[0-5]\d)?(?!\d)', ' ', raw)
     candidates: list[date] = []
     patterns = [
         (r'(?<![\d./])(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})(?!\d)', lambda m: (int(m[1]), int(m[2]), int(m[3]))),
@@ -60,6 +63,12 @@ def parse_dates(raw: str) -> tuple[date | None, date | None]:
     # German numeric shorthand: 10.–14.03.2027.
     for m in re.finditer(r'\b(\d{1,2})\.?\s*[–—-]\s*(\d{1,2})\.(\d{1,2})\.(20\d{2})', raw):
         try: candidates.extend([date(int(m[4]), int(m[3]), int(m[1])), date(int(m[4]), int(m[3]), int(m[2]))])
+        except ValueError: pass
+    # Korean official notices: 2026.5.27.(수)~28.(목), 2026.7.6(월)~10(금).
+    for m in re.finditer(r'(20\d{2})\s*[년./-]\s*(\d{1,2})\s*[월./-]\s*(\d{1,2})(?:일|\.)?(?:\s*\([^)]{1,6}\))?\s*[~–—-]\s*(?:(\d{1,2})[월.]\s*)?(\d{1,2})(?!\d)(?:일|\.)?(?:\([^)]{1,6}\))?', raw):
+        try:
+            candidates.extend([date(int(m[1]), int(m[2]), int(m[3])),
+                               date(int(m[1]), int(m[4] or m[2]), int(m[5]))])
         except ValueError: pass
     unique = sorted(set(candidates))
     return (unique[0], unique[-1] if len(unique) > 1 else None) if unique else (None, None)

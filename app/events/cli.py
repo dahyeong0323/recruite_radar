@@ -15,6 +15,7 @@ async def run_events(settings, args):
         for event in service.repository.load(): print(event_message(event)[0] + '\n')
         return 0
     if action == 'health': result = service.health()
+    elif action == 'repair': result = await service.repair_records(apply=args.apply)
     elif action == 'merge':
         if not args.from_id or not args.into_id: raise ValueError('--from-id and --into-id required')
         result = await service.merge_events(args.from_id, args.into_id)

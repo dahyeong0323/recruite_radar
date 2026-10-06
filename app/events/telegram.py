@@ -30,7 +30,8 @@ def event_message(event: CanonicalEvent, kind='new'):
 def select_events(command, events):
     events = [e for e in events if not e.merged_into]
     if command == '/events_saved': return [e for e in events if e.user_status in {'interested', 'registered'}]
-    active = [e for e in events if e.facts.event_status not in {'completed', 'cancelled'}]
+    active = [e for e in events if e.facts.event_status not in {'completed', 'cancelled'}
+              and (e.facts.start_date is not None or e.facts.event_status == 'postponed')]
     if command == '/events_high': return [e for e in active if e.evaluation.priority == 'A']
     if command == '/events_geneva': return [e for e in active if e.facts.city == 'Geneva']
     if command == '/events_zurich': return [e for e in active if e.facts.city == 'Zurich']

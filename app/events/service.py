@@ -13,6 +13,7 @@ from app.events.health import read_json, event_health, record_log, write_health
 from app.events.lifecycle import apply_lifecycle
 from app.events.merge import material_fingerprint
 from app.events.models import EventSourceItem
+from app.events.notification_policy import notification_eligible
 from app.events.pipeline import EventPipeline
 from app.events.repository import EventRepository
 from app.events.outbox import load_outbox, save_outbox, send_event, classify_delivery_error
@@ -166,6 +167,12 @@ class EventService:
                             signal['next_retry_at'] = (stamp + timedelta(hours=min(168, 2 ** signal['attempts']))).isoformat()
                             continue
                         cfg = next((c for c in self.configs if c.id == run['source']), None)
+                        if run.get('operation') == 'refresh':
+                            state.setdefault('refresh', {})[run['source']] = {
+                                'last_checked_at': stamp.isoformat(), 'outcome': run['outcome'],
+                                'errors': run['errors'], 'details': run.get('details', 0)}
+                            record_log(self.repository, {**run, 'items': len(run['items']), 'metrics': metrics, 'run_id': path.stem}, stamp, self.settings.secrets)
+                            continue
                         row = state.setdefault('sources', {}).setdefault(run['source'], {})
                         if row.get('last_checked_at') and datetime.fromisoformat(row['last_checked_at']) > stamp:
                             continue
@@ -260,7 +267,8 @@ class EventService:
                 if cfg.adapter == 'friends': batch = await self.collect_bounded(cfg, http, as_of)
                 else: batch = await self.collect_bounded(cfg, http, as_of, detail_urls=[o.source_url])
                 runs.append({'source': cfg.id, 'items': [i.model_dump(mode='json') for i in batch.items],
-                             'signals': batch.signals, 'outcome': batch.outcome, 'errors': batch.errors})
+                             'signals': batch.signals, 'outcome': batch.outcome, 'errors': batch.errors,
+                             'operation': 'refresh', 'details': batch.details})
         finally: await http.close()
         if runs: write_json(self.spool / (uuid.uuid4().hex + '.json'), {'as_of': as_of.isoformat(), 'runs': runs})
         return await self.apply_staged()
@@ -302,8 +310,8 @@ class EventService:
                         row['state'] = 'delivery_unknown'; data['deliveries'][key] = row
                         save_outbox(path, data); await self.persist('radar: mark interrupted Event delivery uncertain'); continue
                     if row.get('state') in {'delivered', 'delivery_unknown', 'rejected'}: continue
-                    if intent['fingerprint'] != event.material_fingerprint and intent['kind'] in {'new', 'update'}: continue
-                    if event.facts.event_status in {'completed', 'cancelled'} and intent['kind'] == 'new': continue
+                    if not notification_eligible(event, self.settings, intent['kind']): continue
+                    if intent['fingerprint'] != event.material_fingerprint: continue
                     if row.get('next_retry_at') and datetime.fromisoformat(row['next_retry_at']) > self.clock(): continue
                     text, markup = event_message(event, intent['kind'])
                     data['deliveries'][key] = {'state': 'sending', 'updated_at': self.clock().isoformat(), 'fingerprint': intent['fingerprint']}
@@ -349,6 +357,7 @@ class EventService:
                         for name, day in [('event', event.facts.start_date), ('registration', event.facts.registration_deadline.date() if event.facts.registration_deadline else None)]:
                             if day and (day-stamp.date()).days in {1, 7}: kinds.append(f'reminder_{name}_{day}_{(day-stamp.date()).days}')
                     for kind in kinds:
+                        if not notification_eligible(event, self.settings, kind): continue
                         key = f'{event.event_id}:{kind}:{event.material_fingerprint}'
                         event.notification_intents.setdefault(key, {'kind': kind, 'fingerprint': event.material_fingerprint, 'created_at': stamp.isoformat()})
                     if kinds: await self.repository.upsert(event)
@@ -400,6 +409,7 @@ class EventService:
     async def catch_up(self):
         """Restart recovery: persisted source due times and idempotent notification keys."""
         try:
+            await self.repair_records()
             await self.collect_due()
             await self.advance_lifecycle()
             await self.send_reminders()
@@ -410,3 +420,16 @@ class EventService:
             from app.utils.security import safe_exception
             import logging
             logging.getLogger(__name__).error(safe_exception('Event catch-up', error, self.settings.secrets))
+
+    async def repair_records(self, *, apply=True):
+        from app.events.repair import repair_records
+        try:
+            async with operation_lock(self.settings.vault_root):
+                await self.sync()
+                async with GLOBAL_VAULT_LOCK:
+                    result = repair_records(self.repository, self.configs, self.clock(), apply=apply)
+                if apply and result['processed'] and not await self.persist('radar: repair Event dates and lifecycle from saved evidence'):
+                    raise RuntimeError('Event audit repair persistence failed')
+                return result
+        except OperationInProgress:
+            return {'deferred': True}

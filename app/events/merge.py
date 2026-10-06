@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+from app.events.normalize import normalized
 from app.events.models import CanonicalEvent, EventFacts, EventSourceItem
 
 UNKNOWN = (None, '', [], 'unknown', 'announced')
@@ -16,12 +17,15 @@ def material_fingerprint(event: CanonicalEvent) -> str:
 
 
 def merge_observations(event: CanonicalEvent, item: EventSourceItem) -> CanonicalEvent:
-    previous = next((o for o in event.observations if (o.source, o.source_id) == (item.source, item.source_id)), None)
+    source_ids = {item.source_id, item.evidence.get('legacy_source_id')}
+    if item.evidence.get('occurrence_anchor'):
+        source_ids.add(hashlib.sha256(f'{normalized(event.facts.title)}:{event.facts.start_date}'.encode()).hexdigest()[:20])
+    previous = next((o for o in event.observations if o.source == item.source and o.source_id in source_ids), None)
     if previous and previous.discovered_at > item.discovered_at:
         return event
     if previous and previous.detail_complete and not item.detail_complete:
         return event.model_copy(update={'last_checked_at': item.discovered_at})
-    observations = [o for o in event.observations if (o.source, o.source_id) != (item.source, item.source_id)] + [item]
+    observations = [o for o in event.observations if not (o.source == item.source and o.source_id in source_ids)] + [item]
     # Stable ordering: trust, source content timestamp, complete detail, deterministic source ID.
     def rank(o):
         stamp = o.updated_at or o.published_at

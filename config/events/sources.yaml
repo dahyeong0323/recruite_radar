@@ -1,5 +1,6 @@
 sources:
   - id: friends_of_korea
+    parser_version: 2
     url: https://friendsofkorea.ch/event/
     adapter: friends
     organizer: Friends of Korea
@@ -21,6 +22,7 @@ sources:
     list_selector: a[href*='/s-ge-event/']
     detail_selector: main
   - id: embassy_bern
+    parser_version: 2
     url: https://che-berne.mofa.go.kr/ch-ko/brd/m_8038/list.do
     adapter: mofa
     organizer: Embassy of the Republic of Korea in Switzerland
@@ -32,6 +34,7 @@ sources:
     detail_selector: .se-contents
     title_selector: .board_detail .bo_head h2
   - id: mission_geneva
+    parser_version: 2
     url: https://overseas.mofa.go.kr/ch-geneva-ko/brd/m_8846/list.do
     adapter: mofa
     organizer: Permanent Mission of the Republic of Korea in Geneva
@@ -74,6 +77,7 @@ sources:
     terms_status: pending
     trust: 4
   - id: startupticker
+    parser_version: 2
     url: https://www.startupticker.ch/en/events
     adapter: startupticker
     organizer: ''

@@ -3,7 +3,8 @@ from app.vault.frontmatter import atomic_write_text
 
 def write_views(root, events):
     alive = [e for e in events if not e.merged_into]
-    upcoming = [e for e in alive if e.facts.event_status in {'announced', 'upcoming', 'happening', 'postponed'}]
+    upcoming = [e for e in alive if e.facts.event_status in {'announced', 'upcoming', 'happening', 'postponed'}
+                and (e.facts.start_date is not None or e.facts.event_status == 'postponed')]
     groups = {'Upcoming': upcoming, 'High Priority': [e for e in upcoming if e.evaluation.priority == 'A'],
               'Geneva': [e for e in upcoming if e.facts.city == 'Geneva'],
               'Zurich': [e for e in upcoming if e.facts.city == 'Zurich'],

@@ -7,6 +7,7 @@ from app.events.models import CanonicalEvent
 from app.events.repository import EventRepository
 from app.events.score import evaluate
 from app.events.normalize import normalize_item
+from app.events.notification_policy import notification_eligible
 
 
 class EventPipeline:
@@ -42,7 +43,7 @@ class EventPipeline:
                 known_alert = bool(event.notification_intents)
                 interested = event.user_status in {'interested', 'registered'}
                 kind = 'new' if active and event.evaluation.priority == 'A' and not known_alert else 'update' if existing and old_fingerprint != event.material_fingerprint and (interested or known_alert) else None
-                if kind and not suppress_alerts and event.user_status != 'ignored' and event.verification_status != 'pending':
+                if kind and not suppress_alerts and event.user_status != 'ignored' and event.verification_status != 'pending' and notification_eligible(event, self.settings, kind):
                     key = f'{event.event_id}:{kind}:{event.material_fingerprint}'
                     event.notification_intents.setdefault(key, {'kind': kind, 'fingerprint': event.material_fingerprint, 'created_at': item.discovered_at.isoformat()})
                 event = await self.repository.upsert(event)

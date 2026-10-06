@@ -92,9 +92,16 @@ def friends_items(html, config, as_of):
         place = next((line for line in lines if '📍' in line), '')
         facts = facts_from_text(title.get_text(' ', strip=True), text, config.url, config.organizer, schedule=schedule, place=place)
         if 'Confirm Attendence' in text or 'Confirm Attendance' in text: facts.registration_url = config.url
-        # Modal contains one occurrence. Date prevents annual same-title collisions.
-        sid = hashlib.sha256(f'{normalized(facts.title)}:{facts.start_date}'.encode()).hexdigest()[:20]
-        items.append(source_item(config, sid, config.url, facts, as_of))
+        legacy_id = hashlib.sha256(f'{normalized(facts.title)}:{facts.start_date}'.encode()).hexdigest()[:20]
+        # Gutenberg's block ID survives schedule edits. Scope it to the edition
+        # so a reused modal next year remains a separate occurrence.
+        anchor = title.get('data-kb-block') or node.get('id')
+        year = facts.edition or (str(facts.start_date.year) if facts.start_date else None)
+        sid = hashlib.sha256(f'{anchor}:{year}:{normalized(facts.title)}'.encode()).hexdigest()[:20] if anchor and year else legacy_id
+        item = source_item(config, sid, config.url, facts, as_of)
+        if sid != legacy_id:
+            item.evidence.update(occurrence_anchor=anchor, legacy_source_id=legacy_id)
+        items.append(item)
     return items
 
 
@@ -208,18 +215,28 @@ def html_detail(html, config, url, as_of, source_id=None):
         facts.attendance_mode = 'in_person' if facts.city else 'online' if place.casefold() == 'online' else 'unknown'
         if 'Participation is completely free' in text: facts.ticket_price_min = 0
     if config.adapter == 'mofa':
-        first = text.splitlines()[0] if text.splitlines() else ''
-        year = re.search(r'\b(20\d{2})년?\b', facts.title)
-        short_date = re.search(r'\b(\d{1,2})\.(\d{1,2})(?:\.|\()', first)
-        if not facts.start_date and year and short_date:
-            from datetime import date
-            try:
-                facts.start_date = date(int(year[1]), int(short_date[1]), int(short_date[2]))
-                facts.start_time = parse_time(first)
-                facts.schedule_raw = facts.title + ': ' + first
-                facts.date_precision = 'time' if facts.start_time else 'date'
-            except ValueError: pass
-        if re.search(r'개최하였습니다|개최하였다|참석하였습니다|개최하였음', text):
+        body_lines = [line for line in text.splitlines() if re.search(r'[가-힣A-Za-z]', line)
+                      and line.strip() != facts.title.strip()
+                      and not re.search(r'작성일|등록일|게시일', line)]
+        first = body_lines[0] if body_lines else ''
+        dated = [line for line in body_lines if re.search(r'개최|참석|행사|회의|대화|연설', line)
+                 and re.search(r'\d{1,2}[월.]\s*\d{1,2}', line)]
+        schedule = dated[0] if dated else first
+        start, end = parse_dates(schedule)
+        if start is None:
+            # An explicit event year in the title/body may qualify month/day.
+            # Never borrow the crawl year or a publication date.
+            years = set(re.findall(r'(?<!\d)20\d{2}(?!\d)', facts.title + ' ' + schedule))
+            short_date = re.search(r'(?<!\d)(\d{1,2})[월.]\s*(\d{1,2})(?:일|\.|\()', schedule)
+            if len(years) == 1 and short_date:
+                qualified = schedule[:short_date.start()] + next(iter(years)) + '.' + schedule[short_date.start():]
+                start, end = parse_dates(qualified)
+        if start:
+            facts.start_date, facts.end_date = start, end
+            facts.start_time = parse_time(schedule)
+            facts.schedule_raw = facts.title + ': ' + schedule
+            facts.date_precision = 'time' if facts.start_time else 'date'
+        if re.search(r'개최하였습니다|개최하였다|참석하였습니다|개최하였음|개최되었습니다|개최됐|참석했습니다|참석하였|대화를?\s*갖고|기조연설을?\s*실시하였습니다', first):
             facts.event_status = 'completed'
         place = re.search(r'([^\n.]{0,60}(?:청사|호텔|센터|회의실|Universal Postal Union)[^\n.]{0,40})', first)
         if place:
