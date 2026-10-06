@@ -130,7 +130,7 @@ def test_manual_merge_keeps_alias_and_notes(settings):
 def test_future_schema_blocks_ingestion_and_migration(settings):
     async def run():
         s=EventService(settings);await s.pipeline.ingest([item()]);e=s.repository.load()[0];path=s.repository.path(e)
-        text=path.read_text(encoding='utf-8').replace('schema_version: 1','schema_version: 99');path.write_text(text,encoding='utf-8')
+        text=path.read_text(encoding='utf-8').replace(f'schema_version: {e.schema_version}','schema_version: 99');path.write_text(text,encoding='utf-8')
         assert (await s.pipeline.ingest([item('board',2)]))['errors']
         with pytest.raises(ValueError):migrate(s.repository,apply=True)
         assert path.read_text(encoding='utf-8')==text

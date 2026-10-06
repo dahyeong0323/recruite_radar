@@ -1,0 +1,33 @@
+{
+  "content": "",
+  "viewFile": [],
+  "view": {
+    "KRITEMNM": "",
+    "INVSTOPINCONTS": "",
+    "PROCDTIME2": "20241107      ",
+    "ENDDT": "",
+    "APPENFILEEXISTYN": "N",
+    "NTCOBJREFRCNT": "1",
+    "NTCTITLE1": "FY2024 third quarter earnings release",
+    "FIXWRTNGYN": "N",
+    "MENUSEQNO": "129",
+    "COMUSPOTCONTS": "",
+    "MENUNO2": "08040101  ",
+    "REFLYN": "Y",
+    "ITEMCD": "",
+    "INPNM": "480018",
+    "ETCCONTS2": "",
+    "ETCCONTS1": "",
+    "NTCOBJSECTCD": "G",
+    "EDITSECTCD": " ",
+    "ISSUPRC": "0",
+    "STARTDT": ""
+  },
+  "dateList": [
+    {
+      "MENUSEQNO": "129",
+      "MENUNO2": "08040101  ",
+      "PROCDT": "2024.11.07"
+    }
+  ]
+}

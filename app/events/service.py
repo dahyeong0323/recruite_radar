@@ -118,8 +118,27 @@ class EventService:
                 pending = [(key, signal) for key, signal in queue.get('signals', {}).items()
                            if signal.get('state') == 'pending' and (not source or signal['source'] == source)
                            and datetime.fromisoformat(signal['next_retry_at']) <= as_of]
+                if self.settings.event_coverage_enabled:
+                    # Reserve five oldest general candidates; fifteen strategic
+                    # candidates compete by importance and age.
+                    old = sorted(pending, key=lambda kv: kv[1].get('discovered_at', ''))
+                    from app.events.collectors.coverage import ACTION
+                    import re
+                    ranked = sorted(old, key=lambda kv: (not bool(re.search(ACTION, kv[1].get('title','')+' '+kv[1].get('snippet',''), re.I)), kv[1].get('discovered_at','')))
+                    first = old[:5]
+                    pending = first + [kv for kv in ranked if kv[0] not in {k for k,_ in first}][:15]
                 for key, signal in pending[:20]:
-                    cfg = next((c for c in self.configs if c.id == signal['source']), None)
+                    if self.settings.event_coverage_enabled:
+                        try:
+                            from app.events.coverage_discovery import source_for_url
+                            cfg = source_for_url(self.configs, signal['url'])
+                        except Exception as error:
+                            runs.append({'source':signal['source'],'items':[],'queue_key':key,'signals':[],
+                                         'outcome':'blocked','errors':[type(error).__name__]})
+                            continue
+                    else:
+                        cfg = None
+                    cfg = cfg or next((c for c in self.configs if c.id == signal['source']), None)
                     if cfg is None:
                         from urllib.parse import urlsplit
                         cfg = next((c for c in self.configs if c.enabled and urlsplit(c.url).hostname == urlsplit(signal['url']).hostname), None)
@@ -128,9 +147,13 @@ class EventService:
                     try:
                         async with asyncio.timeout(30):
                             html = (await http.get(signal['url'])).text
-                        items = html_detail(html, cfg, signal['url'], as_of, signal.get('source_id'))
+                        if cfg.adapter == 'samsung_ir':
+                            from app.events.collectors.samsung import ir_items
+                            items = ir_items(json.loads(html),cfg,signal['url'],as_of)
+                        else:
+                            items = html_detail(html, cfg, signal['url'], as_of, signal.get('source_id'))
                         runs.append({'source': cfg.id, 'items': [i.model_dump(mode='json') for i in items], 'queue_key': key,
-                                     'signals': [], 'outcome': 'success' if items else 'rejected', 'errors': []})
+                                     'signals': [], 'outcome': 'success' if items else 'unparsed' if self.settings.event_coverage_enabled else 'rejected', 'errors': []})
                     except Exception as error:
                         runs.append({'source': cfg.id, 'items': [], 'queue_key': key, 'signals': [], 'outcome': 'failed', 'errors': [type(error).__name__]})
             finally:
@@ -160,11 +183,27 @@ class EventService:
                         result['errors'].extend(metrics['errors'])
                         if metrics['errors']: continue
                         queue_signals(queue['signals'], run.get('signals', []), run['source'], stamp)
+                        if run.get('operation') == 'search':
+                            row = state.setdefault('search', {}).setdefault('queries', {}).setdefault(run['query_id'], {})
+                            attempts = row.get('failures',0)+1 if run['outcome']=='failed' else 0
+                            row.update(query=run['query'], status=run['outcome'], failures=attempts,
+                                       last_completed_at=stamp.isoformat(),
+                                       next_due_at=(stamp+timedelta(hours=6 if not attempts else 6 if attempts==1 else 24 if attempts==2 else 72)).isoformat())
+                            state['search_status'] = 'partial' if run['outcome']=='failed' else 'success'
+                            record_log(self.repository, {'operation':'search','query_id':run['query_id'],
+                                'signals':len(run.get('signals',[])),'outcome':run['outcome'],'run_id':path.stem},stamp)
+                            continue
                         if run.get('queue_key'):
                             signal = queue['signals'][run['queue_key']]
                             signal['attempts'] += 1
                             signal['state'] = 'resolved' if run['outcome'] == 'success' else 'rejected' if run['outcome'] == 'rejected' else 'pending'
                             signal['next_retry_at'] = (stamp + timedelta(hours=min(168, 2 ** signal['attempts']))).isoformat()
+                            if self.settings.event_coverage_enabled and run['outcome'] != 'success':
+                                signal['outcome'] = run['outcome']
+                                signal['assessment_reason'] = ', '.join(run['errors']) or 'No supported event claim; awaiting alternative evidence'
+                                age = stamp - datetime.fromisoformat(signal['discovered_at'])
+                                signal['state'] = 'stale' if age > timedelta(days=90) else 'pending'
+                                signal['next_retry_at'] = (stamp+timedelta(hours=6 if signal['attempts']==1 else 24 if signal['attempts']==2 else 72)).isoformat()
                             continue
                         cfg = next((c for c in self.configs if c.id == run['source']), None)
                         if run.get('operation') == 'refresh':
@@ -209,6 +248,9 @@ class EventService:
             return {'deferred': True, 'reason': 'Vault busy; staged Event batch retained'}
 
     async def discover_search(self):
+        if self.settings.event_coverage_enabled:
+            from app.events.coverage_discovery import discover
+            return await discover(self)
         # Quota ledger reservations are persisted before API requests, including crashes.
         try:
             async with operation_lock(self.settings.vault_root):
@@ -256,13 +298,22 @@ class EventService:
             f = event.facts
             if event.merged_into or f.event_status in {'completed', 'cancelled'}: continue
             urgent = bool(f.start_date and 0 <= (f.start_date - as_of.date()).days <= 14 or f.registration_deadline and 0 <= (f.registration_deadline-as_of).days <= 7)
-            if event.last_verified_at and as_of-event.last_verified_at < timedelta(hours=6 if urgent else 24): continue
-            selected.extend(o for o in event.observations if o.trust >= 3)
+            if (not self.settings.event_coverage_enabled or event.assessment_status not in {'watching','stale'}) and event.last_verified_at and as_of-event.last_verified_at < timedelta(hours=6 if urgent else 24): continue
+            if self.settings.event_coverage_enabled and event.assessment_status in {'watching','stale'}:
+                if event.assessment_status == 'stale' and event.user_status not in {'interested','registered'}: continue
+                if event.next_verification_at and event.next_verification_at > as_of: continue
+                selected.extend(event.observations)
+            else:
+                selected.extend(o for o in event.observations if o.trust >= 3)
         selected = list({(o.source, o.source_id): o for o in selected}.values())
         runs, http = [], EventHttp(self.settings)
         try:
             for o in selected[:20]:
                 cfg = next((c for c in self.configs if c.id == o.source and c.enabled), None)
+                if self.settings.event_coverage_enabled and cfg is None:
+                    from app.events.coverage_discovery import source_for_url
+                    try: cfg = source_for_url(self.configs, o.source_url)
+                    except Exception: continue
                 if not cfg: continue
                 if cfg.adapter == 'friends': batch = await self.collect_bounded(cfg, http, as_of)
                 else: batch = await self.collect_bounded(cfg, http, as_of, detail_urls=[o.source_url])
@@ -281,8 +332,12 @@ class EventService:
                 for event in self.repository.load():
                     old = event.material_fingerprint
                     event.facts = apply_lifecycle(event.facts, stamp)
+                    old_assessment = event.assessment_status
+                    if self.settings.event_coverage_enabled:
+                        from app.events.watch import assess
+                        event = assess(event, stamp)
                     event.material_fingerprint = material_fingerprint(event)
-                    if old != event.material_fingerprint:
+                    if old != event.material_fingerprint or old_assessment != event.assessment_status:
                         event.changes.append({'at': stamp.isoformat(), 'change': 'lifecycle advanced'})
                         await self.repository.upsert(event)
                 async with GLOBAL_VAULT_LOCK: self.repository.rebuild()

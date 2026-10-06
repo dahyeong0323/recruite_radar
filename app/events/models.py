@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EventStatus = Literal['announced', 'upcoming', 'happening', 'completed', 'cancelled', 'postponed']
 RegistrationStatus = Literal['unknown', 'not_open', 'open', 'closed', 'waitlist']
 
@@ -27,6 +27,15 @@ class EventFacts(BaseModel):
     timezone: str = 'Europe/Zurich'
     date_precision: Literal['unknown', 'month', 'date', 'time'] = 'unknown'
     schedule_raw: str = ''
+    schedule_year: int | None = Field(default=None, ge=2000, le=2100)
+    schedule_month: int | None = Field(default=None, ge=1, le=12)
+    occurrence_kind: Literal['event', 'programme', 'campaign', 'city_stop'] = 'event'
+    campaign_key: str | None = None
+    route_cities: list[str] = Field(default_factory=list)
+    business_application_url: str | None = None
+    business_application_deadline: date | None = None
+    business_eligibility: str = ''
+    attachment_urls: list[str] = Field(default_factory=list)
     city: str | None = None
     canton: str | None = None
     venue: str | None = None
@@ -97,6 +106,14 @@ class CanonicalEvent(BaseModel):
     model_config = ConfigDict(extra='allow')
     event_id: str
     schema_version: int = SCHEMA_VERSION
+    assessment_status: Literal['candidate', 'watching', 'confirmed', 'dismissed', 'stale'] = 'confirmed'
+    parent_event_id: str | None = None
+    related_event_ids: list[str] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    next_verification_at: datetime | None = None
+    last_substantive_at: datetime | None = None
+    verification_attempts: int = 0
+    assessment_reason: str = ''
     merged_into: str | None = None
     facts: EventFacts
     observations: list[EventSourceItem] = Field(default_factory=list)

@@ -28,6 +28,14 @@ class OfficialCollector:
         cfg, result = self.config, Collection()
         self.result = result
         self.pending_links, self.finished_links = [], set()
+        if cfg.adapter == 'samsung_ir':
+            from app.events.collectors.samsung import collect_ir
+            try: return await collect_ir(self, as_of, cursor, detail_urls)
+            except Exception as error:
+                result.outcome = 'blocked' if isinstance(error,AccessBlocked) else 'structural_drift' if isinstance(error,StructuralDrift) else 'failed'
+                result.complete=False;result.errors.append(type(error).__name__)
+                result.cursor=getattr(self,'current_url',cfg.url)
+                return result
         if detail_urls:
             for detail_url in detail_urls[:cfg.max_details]:
                 sid = parse_qs(urlsplit(detail_url).query).get('seq', [detail_url])[0] if cfg.adapter == 'mofa' else detail_url
@@ -80,13 +88,23 @@ class OfficialCollector:
                             links.append((detail, m[1], a.get_text(' ', strip=True)))
                 else:
                     for a in soup.select(cfg.list_selector):
-                        links.append((urljoin(url, a['href']), urljoin(url, a['href']), a.get_text(' ', strip=True)))
+                        href = a['href']
+                        if cfg.adapter == 'kotra':
+                            match = re.fullmatch(r"javascript:fn_selectBizMntInfoDetailNew\('([^']+)'\);?", href)
+                            if not match: continue
+                            href = match[1]
+                        if href.startswith('javascript:'): continue
+                        detail = urljoin(url, href)
+                        sid = parse_qs(urlsplit(detail).query).get('dtlBizMntNo', [detail])[0] if cfg.adapter == 'kotra' else detail
+                        links.append((detail, sid, a.get_text(' ', strip=True)))
                 if detail_urls:
                     links = [(u, parse_qs(urlsplit(u).query).get('seq', [u])[0] if cfg.adapter == 'mofa' else u, 'Event refresh') for u in detail_urls]
                 if not links:
                     structured = jsonld_items(html, cfg, url, as_of)
                     if structured: result.items.extend(structured); break
                     if cfg.empty_selector and soup.select_one(cfg.empty_selector): result.outcome = 'empty'; break
+                    if cfg.adapter == 'kotra' and soup.select_one('#allTotCnt[value="0"]'):
+                        result.outcome = 'empty'; break
                     if cfg.adapter == 'mofa' and re.search(r'게시물이\s*없습니다|등록된\s*게시물이\s*없', soup.get_text()): result.outcome = 'empty'; break
                     raise StructuralDrift('no event list entries or explicit empty marker')
                 signature = tuple(url for url, _, _ in links)
@@ -117,6 +135,15 @@ class OfficialCollector:
                         self.finished_links.add(detail_url)
                 if detail_urls: break
                 next_node = soup.select_one(cfg.next_selector) if cfg.next_selector else None
+                if cfg.adapter == 'kotra':
+                    count = soup.select_one('#allTotCnt')
+                    if not count or not str(count.get('value','')).isdigit(): raise StructuralDrift('KOTRA total count missing')
+                    parsed = urlsplit(url); query = parse_qs(parsed.query)
+                    offset = int(query.get('startCount', ['0'])[0]); size = int(query.get('listCount', ['10'])[0])
+                    if offset + size < int(count['value']):
+                        query['startCount'] = [str(offset + size)]
+                        url = urlunsplit((parsed.scheme,parsed.netloc,parsed.path,urlencode(query,doseq=True),''))
+                        result.cursor = url; continue
                 if cfg.adapter == 'mofa':
                     # Standard MOFA board pages use page=N, with explicit last-page control.
                     numbers = [int(m[1]) for a in soup.select('.paging a[href], .pagination a[href]') if (m := re.search(r'[?&]page=(\d+)', a.get('href', '')))]

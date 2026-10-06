@@ -1,94 +1,218 @@
 sources:
-  - id: friends_of_korea
-    parser_version: 2
-    url: https://friendsofkorea.ch/event/
-    adapter: friends
-    organizer: Friends of Korea
-    enabled: true
-    validation_status: verified
-    terms_status: public_read
-    trust: 5
-    interval_hours: 12
-    max_pages: 3
-    next_selector: a.next.page-numbers
-  - id: sge
-    url: https://www.s-ge.com/export/en/events/all-events/upcoming-events
-    adapter: html
-    organizer: Switzerland Global Enterprise
-    enabled: false
-    validation_status: pending_pagination
-    terms_status: public_read
-    trust: 5
-    list_selector: a[href*='/s-ge-event/']
-    detail_selector: main
-  - id: embassy_bern
-    parser_version: 2
-    url: https://che-berne.mofa.go.kr/ch-ko/brd/m_8038/list.do
-    adapter: mofa
-    organizer: Embassy of the Republic of Korea in Switzerland
-    enabled: true
-    validation_status: verified
-    terms_status: public_read
-    trust: 5
-    interval_hours: 6
-    detail_selector: .se-contents
-    title_selector: .board_detail .bo_head h2
-  - id: mission_geneva
-    parser_version: 2
-    url: https://overseas.mofa.go.kr/ch-geneva-ko/brd/m_8846/list.do
-    adapter: mofa
-    organizer: Permanent Mission of the Republic of Korea in Geneva
-    enabled: true
-    validation_status: verified
-    terms_status: public_read
-    trust: 5
-    interval_hours: 6
-    detail_selector: .se-contents
-    title_selector: .board_detail .bo_head h2
-  - id: kotra_zurich
-    url: https://www.kotra.or.kr/KBC/zurich
-    adapter: html
-    organizer: KOTRA Zurich
-    validation_status: official_landing_404
-    terms_status: pending
-    trust: 5
-    interval_hours: 6
-  - id: krx
-    url: https://global.krx.co.kr/
-    adapter: html
-    organizer: Korea Exchange
-    validation_status: pending
-    terms_status: pending
-    trust: 5
-    interval_hours: 6
-  - id: samsung_securities
-    url: https://www.samsungpop.com/
-    adapter: html
-    organizer: Samsung Securities
-    validation_status: pending
-    terms_status: pending
-    trust: 5
-    interval_hours: 6
-  - id: skbc
-    url: https://www.skbckorea.com/past-events
-    adapter: html
-    organizer: Swiss-Korean Business Council
-    validation_status: pending
-    terms_status: pending
-    trust: 4
-  - id: startupticker
-    parser_version: 2
-    url: https://www.startupticker.ch/en/events
-    adapter: startupticker
-    organizer: ''
-    enabled: true
-    validation_status: verified
-    terms_status: public_read
-    trust: 3
-    interval_hours: 12
-    max_pages: 1
-    max_details: 8
-    list_selector: main a[href*='/en/events/']:not([href$='/submit'])
-    detail_selector: .main-content .item
-    title_selector: h1
-    next_selector: .pagination a.next
+- id: friends_of_korea
+  parser_version: 2
+  url: https://friendsofkorea.ch/event/
+  adapter: friends
+  organizer: Friends of Korea
+  enabled: true
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 12
+  max_pages: 3
+  next_selector: a.next.page-numbers
+- id: sge
+  url: https://www.s-ge.com/export/en/events/all-events/upcoming-events
+  adapter: html
+  organizer: Switzerland Global Enterprise
+  enabled: false
+  validation_status: pending_pagination
+  terms_status: public_read
+  trust: 5
+  list_selector: a[href*='/s-ge-event/']
+  detail_selector: main
+- id: embassy_bern
+  parser_version: 2
+  url: https://che-berne.mofa.go.kr/ch-ko/brd/m_8038/list.do
+  adapter: mofa
+  organizer: Embassy of the Republic of Korea in Switzerland
+  enabled: true
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  detail_selector: .se-contents
+  title_selector: .board_detail .bo_head h2
+- id: mission_geneva
+  parser_version: 2
+  url: https://overseas.mofa.go.kr/ch-geneva-ko/brd/m_8846/list.do
+  adapter: mofa
+  organizer: Permanent Mission of the Republic of Korea in Geneva
+  enabled: true
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  detail_selector: .se-contents
+  title_selector: .board_detail .bo_head h2
+- id: kotra_zurich
+  url: https://www.kotra.or.kr/module/subhome/bizAply/selectBmBizAllListAjax.do?query=%EC%8A%A4%EC%9C%84%EC%8A%A4&collection=business_application&sch_nation_cd=N&startCount=0&listCount=10&pageSize=10
+  adapter: kotra
+  organizer: KOTRA Zurich
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  enabled: true
+  coverage_only: true
+  domains:
+  - www.kotra.or.kr
+  - kotra.or.kr
+  required_coverage: true
+  list_selector: a[href*="fn_selectBizMntInfoDetailNew"]
+  max_pages: 3
+  max_details: 12
+  parser_version: 3
+  validation_checked_at: '2026-10-06'
+  next_validation_at: '2026-11-06'
+  query_terms:
+  - KOTRA Zurich
+  - KOTRA 스위스
+  - GP Switzerland
+  validation_reason: Public business search AJAX, including closed applications; fixtures
+    and robots checked
+- id: krx
+  url: https://global.krx.co.kr/contents/GLB/96/9600000000/GLB9600000000T2.jsp
+  adapter: html
+  organizer: Korea Exchange
+  validation_status: pending_dynamic_detail
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  domains:
+  - global.krx.co.kr
+  - www.krx.co.kr
+  - kind.krx.co.kr
+  required_coverage: true
+  query_terms:
+  - KRX Korea Exchange
+  - 한국거래소
+  validation_reason: Public Notice found; linked detail requires additional parser
+    validation
+  next_validation_at: '2026-10-13'
+- id: samsung_securities
+  url: https://www.samsungsecurities.com/eng/invest/ir_ajax.do?currentPage=1&SearchYear=0&SearchMonth=0&viewType=L
+  adapter: samsung_ir
+  organizer: Samsung Securities
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  domains:
+  - www.samsungsecurities.com
+  - samsungsecurities.com
+  - www.samsungpop.com
+  - samsungpop.com
+  required_coverage: true
+  query_terms:
+  - Samsung Securities London
+  - 삼성증권
+  validation_reason: Public list and detail JSON contracts verified; client roadshows
+    additionally require media search
+  next_validation_at: '2026-11-06'
+  enabled: true
+  coverage_only: true
+  parser_version: 3
+  max_pages: 2
+  max_details: 10
+  validation_checked_at: '2026-10-06'
+- id: skbc
+  url: https://www.skbckorea.com/past-events
+  adapter: html
+  organizer: Swiss-Korean Business Council
+  validation_status: pending
+  terms_status: pending
+  trust: 4
+- id: startupticker
+  parser_version: 2
+  url: https://www.startupticker.ch/en/events
+  adapter: startupticker
+  organizer: ''
+  enabled: true
+  validation_status: verified
+  terms_status: public_read
+  trust: 3
+  interval_hours: 12
+  max_pages: 1
+  max_details: 8
+  list_selector: main a[href*='/en/events/']:not([href$='/submit'])
+  detail_selector: .main-content .item
+  title_selector: h1
+  next_selector: .pagination a.next
+- id: kotra_open
+  url: https://www.kotra.or.kr/module/subhome/bizAply/selectBmBizAllListAjax.do?query=%EC%8A%A4%EC%9C%84%EC%8A%A4&collection=business_application&sch_nation_cd=Y&startCount=0&listCount=10&pageSize=10
+  adapter: kotra
+  organizer: KOTRA Zurich
+  enabled: true
+  coverage_only: true
+  validation_status: verified
+  terms_status: public_read
+  trust: 5
+  interval_hours: 6
+  list_selector: a[href*="fn_selectBizMntInfoDetailNew"]
+  parser_version: 3
+  max_details: 12
+- id: sedaily
+  url: https://en.sedaily.com/finance/
+  adapter: article
+  organizer: ''
+  enabled: false
+  coverage_only: true
+  validation_status: verified_detail
+  terms_status: public_read
+  trust: 3
+  source_role: publisher
+  domains:
+  - en.sedaily.com
+  - www.sedaily.com
+  detail_selector: .article-content
+  title_selector: h1
+  query_terms:
+  - site:en.sedaily.com Korea Zurich roadshow
+  - site:sedaily.com 스위스 로드쇼
+- id: linkedin_public
+  url: https://www.linkedin.com/
+  adapter: article
+  enabled: false
+  coverage_only: true
+  validation_status: discovery_only
+  terms_status: blocked_automation
+  trust: 1
+  domains:
+  - www.linkedin.com
+  - ch.linkedin.com
+  - kr.linkedin.com
+  source_role: aggregator
+  query_terms:
+  - site:linkedin.com/posts Korea Switzerland
+  - site:linkedin.com/company/kotra-zurich partnership
+- id: bizinfo
+  url: https://www.bizinfo.go.kr/web/lay1/bbs/S1T122C128/AS/74/list.do
+  adapter: bizinfo
+  enabled: false
+  coverage_only: true
+  validation_status: pending_search_contract
+  terms_status: public_read
+  trust: 3
+  source_role: aggregator
+  domains:
+  - www.bizinfo.go.kr
+  query_terms:
+  - site:bizinfo.go.kr 스위스 KOTRA
+- id: kind_ir
+  url: https://kind.krx.co.kr/
+  adapter: kind
+  enabled: false
+  coverage_only: true
+  validation_status: pending_ir_list_contract
+  terms_status: public_read
+  trust: 3
+  source_role: aggregator
+  domains:
+  - kind.krx.co.kr
+  query_terms:
+  - site:kind.krx.co.kr 취리히 기업설명회
+  - site:kind.krx.co.kr Zurich NDR
+  validation_reason: Public disclosure discovery; issuer and hosting exchange must
+    be distinguished
+  next_validation_at: '2026-10-13'

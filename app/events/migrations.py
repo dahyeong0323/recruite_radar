@@ -13,7 +13,8 @@ def migrate(repository, *, apply=False):
         version = metadata.get('schema_version', 1)
         if version > SCHEMA_VERSION: raise ValueError(f'unsupported future Event schema: {path.name}')
         event = CanonicalEvent.model_validate(metadata)
-        if 'schema_version' not in metadata:
+        if version < SCHEMA_VERSION or 'schema_version' not in metadata:
+            event.schema_version = SCHEMA_VERSION
             plans.append((path, original, event))
     if apply:
         for path, original, event in plans:

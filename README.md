@@ -288,3 +288,42 @@ notification intents; it does not claim a fresh network verification or create
 repair alerts. Every corrected note records its before/after facts. Inspect the
 plan with `python -m app.cli events repair`; apply explicitly with `--apply`.
 The canonical `audit_repair_version` marker makes restart recovery idempotent.
+
+
+### Swiss–Korea discovery coverage
+
+`EVENT_COVERAGE_ENABLED=true` enables closed/open KOTRA business-list collection,
+body-based announcement parsing, durable incomplete Event Watch records, and
+`/events_watch`. Existing Job schedules and Event A/B weights are unchanged.
+Coverage is reported separately under `/events_status` and `/health`; working
+collectors do not imply that KRX/Samsung/media search coverage is available.
+
+Brave searches run at 08:15, 14:15 and 20:15 Europe/Zurich with 2 core, 1 general
+and 1 Watch slot per run (unused Watch slots rotate general queries). Configure
+`BRAVE_SEARCH_API_KEY`, `EVENT_SEARCH_FREE_VERIFIED=true`, the current
+`EVENT_SEARCH_FREE_MONTH=YYYY-MM`, and `EVENT_SEARCH_FREE_REMAINING` only after
+checking the account's free allocation and permission to retain search results.
+The remaining setting is the monthly Event Radar allocation, net of other users
+of that key; the local ledger subtracts requests made by this radar. Caps are
+20/day and 600/month. Every attempt is reserved in Git before calling the API.
+No hidden API retries occur. Each result batch is staged before the next query;
+a failed query remains due for retry. Monthly verification expires automatically.
+A key is never requested in Telegram or stored in Markdown.
+
+Search snippets are discovery evidence, never confirmed event facts. Public
+original articles can create a Watch without an exact day, venue or registration
+URL. A trusted original must explicitly connect a Korean subject, Swiss stop and
+strategic business event before a first `[EVENT WATCH]` alert is allowed.
+Official detail discovery is independent of list-parser validation. LinkedIn
+robots prohibits general automated access: retain its search signal and verify
+through permitted alternative originals; do not bypass login or robots.
+Samsung corporate IR list/detail JSON is collected; it does not cover all client roadshows.
+KRX dynamic details and Bizinfo list contracts remain
+marked pending until collector fixtures and access checks pass, while their
+registered domains/queries are usable for discovery where permitted.
+
+Run `radar events migrate` for a migration preview; `--apply` backs up exact v1
+notes before upgrading to schema v2. Migration preserves IDs, paths, user notes
+and existing notification keys. Backfill with `radar events collect --backfill`
+before enabling normal alerts. Keep `EVENT_COVERAGE_ENABLED=false` to disable
+new collectors/search/Watch notifications; accumulated notes remain readable.

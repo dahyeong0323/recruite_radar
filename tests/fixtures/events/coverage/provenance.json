@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-10-06",
+  "kotra_gp.html": {
+    "url": "https://www.kotra.or.kr/subList/20000020753/subhome/bizAply/selectBizMntInfoDetail.do?cpbizYn=N&dtlBizMntNo=26CN0N5",
+    "capture": "actual public bizForm HTML"
+  },
+  "kotra_N.html": {
+    "url": "https://www.kotra.or.kr/module/subhome/bizAply/selectBmBizAllListAjax.do",
+    "params": {
+      "query": "스위스",
+      "collection": "business_application",
+      "sch_nation_cd": "N",
+      "startCount": 0,
+      "listCount": 10,
+      "pageSize": 10
+    },
+    "capture": "actual closed-application list"
+  },
+  "kotra_Y.html": {
+    "capture": "same query with sch_nation_cd=Y; explicit allTotCnt=0"
+  },
+  "roadshow_article.html": {
+    "url": "https://en.sedaily.com/finance/2026/07/05/korean-brokerages-court-global-investors-in-new-york-europe",
+    "capture": "relevant original paragraph and h1, with normalized publication metadata from the public article"
+  },
+  "kotra_announcement.html": {
+    "url": "https://ch.linkedin.com/company/kotra-zurich",
+    "capture": "semantic fixture using publicly indexed announcement facts; not live DOM, not a collector access approval"
+  },
+  "samsung_results.html": {
+    "url": "https://www.samsungsecurities.com/eng/invest/ir_ajax.do?currentPage=1&SearchYear=0&SearchMonth=0&viewType=L",
+    "capture": "actual public JSON"
+  },
+  "samsung_detail.json": {
+    "url": "https://www.samsungsecurities.com/eng/invest/ir_detail_ajax.do?MenuSeqNo=129"
+  },
+  "samsung_ir_detail.json": {
+    "url": "https://www.samsungsecurities.com/eng/invest/ir_detail_ajax.do?MenuSeqNo=128"
+  },
+  "krx_notice.html": {
+    "url": "https://global.krx.co.kr/contents/GLB/96/9600000000/GLB9600000000T2.jsp",
+    "capture": "actual discovery surface; dynamic linked details not yet enabled"
+  }
+}

@@ -13,6 +13,10 @@ def material_fingerprint(event: CanonicalEvent) -> str:
               'event_status', 'registration_status', 'registration_url', 'registration_deadline',
               'access_type', 'student_accessibility']
     data = f.model_dump(mode='json')
+    # Preserve the exact v1 hash for existing dated events. New incomplete
+    # schedules get material month/route changes without re-alerting old notes.
+    if f.schedule_year or f.schedule_month or f.campaign_key:
+        fields += ['schedule_year','schedule_month','campaign_key','route_cities']
     return hashlib.sha256(json.dumps({k: data[k] for k in fields}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

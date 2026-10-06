@@ -10,6 +10,10 @@ def evaluate(event: CanonicalEvent, settings) -> EventEvaluation:
     trusted_text = '\n'.join('\n'.join([o.facts.title, o.facts.description, *o.facts.organizers, *o.facts.participating_organizations]) for o in trusted).casefold()
     if trusted:
         text = trusted_text
+    if settings.event_coverage_enabled:
+        # The trade portal's name is administrative boilerplate, not evidence
+        # that an AI/energy matchmaking programme is a finance event.
+        text = text.replace('무역투자24','business application portal')
     config = config_data(settings, 'scoring')
     orgs = config_data(settings, 'organizers').get('organizations', [])
     korean_orgs = [row for row in orgs if row.get('korean') and any(alias.casefold() in text for alias in row.get('aliases', []))]
@@ -17,6 +21,11 @@ def evaluate(event: CanonicalEvent, settings) -> EventEvaluation:
     finance = bool(re.search(r'\b(financ\w*|invest\w*|roadshow|ndr|securities|asset management|venture capital|private equity|bank\w*)\b|투자|금융|증권|자산운용|은행', text))
     networking = bool(re.search(r'network\w*|matchmaking|apéro|apero|roundtable|roadshow|meet investors|네트워킹|간담회|투자설명회', text))
     career = bool(re.search(r'career|student|mentor|job|채용|커리어|취업', text))
+    business = False
+    if settings.event_coverage_enabled:
+        from app.events.watch import high_value_signal
+        business = high_value_signal(event) and bool({'business_partnership','business_matchmaking'} & set(f.event_types))
+        networking = networking or business or high_value_signal(event) and bool({'investor_roadshow','investor_meeting'} & set(f.event_types))
     verified = bool(trusted)
     korea_verified = korea and verified
     swiss_verified = bool(f.start_date and any(o.facts.country == 'CH' and o.facts.city == f.city
@@ -33,10 +42,10 @@ def evaluate(event: CanonicalEvent, settings) -> EventEvaluation:
     price = 25 if f.ticket_price_min is None else 100 if f.ticket_price_min == 0 else 60 if f.currency == 'CHF' and f.ticket_price_min <= 50 else 20
     accessibility = round(student * .3 + registration * .3 + geography * .25 + price * .15)
     scores = {'korea': 100 if korea else 0, 'finance': 100 if finance else 0,
-              'career': 100 if career else 60 if finance and korea else 20,
+              'career': 100 if career else 60 if (finance or business) and korea else 20,
               'networking': 100 if networking else 50 if f.event_types else 10,
               'attendees': attendees, 'organizer': credibility,
-              'strategic': 100 if finance and korean_orgs and networking else 60 if korea and networking else 10,
+              'strategic': 100 if (finance or business) and korean_orgs and networking else 60 if korea and networking else 10,
               'accessibility': accessibility}
     overall = round(sum(scores[k] * weight / 100 for k, weight in config['weights'].items()))
     priority = 'A' if overall >= config['thresholds']['A'] and korea_verified and swiss_verified else 'B' if overall >= config['thresholds']['B'] else 'C'

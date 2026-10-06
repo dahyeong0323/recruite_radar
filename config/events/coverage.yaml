@@ -1,0 +1,51 @@
+core_queries:
+- KOTRA Zurich Switzerland GP partnership business event
+- site:kotra.or.kr 스위스 취리히 상담회 사업
+- KRX Korea Exchange Switzerland Zurich investor roadshow NDR
+- Samsung Securities London Zurich marketing tour capital market conference
+- 한국거래소 삼성증권 취리히 유럽 로드쇼 투자설명회
+- Korean company Switzerland Geneva Zurich investor meeting IR NDR
+general_queries:
+- site:linkedin.com/posts Korea Switzerland business partnership
+- site:linkedin.com/company/kotra-zurich event partnership
+- site:en.sedaily.com Korea Zurich roadshow
+- site:bizinfo.go.kr 스위스 KOTRA 상담회
+- site:mofa.go.kr 스위스 기업 행사 간담회
+- Südkorea Schweiz Investoren Roadshow Veranstaltung
+- Corée Suisse Genève Zurich investissement rencontre événement
+- Korea Switzerland chamber embassy business conference
+- site:kind.krx.co.kr 취리히 기업설명회
+- site:samsungsecurities.com Zurich roadshow
+- site:global.krx.co.kr Switzerland investor conference
+required_organizations:
+- kotra_zurich
+- krx
+- samsung_securities
+query_max_age_hours: 72
+route_cities:
+  London:
+  - 런던
+  Stockholm:
+  - 스톡홀름
+  Milan:
+  - Milano
+  - 밀라노
+  Zurich:
+  - Zürich
+  - 취리히
+  Geneva:
+  - Genève
+  - Genf
+  - 제네바
+  Paris:
+  - 파리
+  Frankfurt:
+  - 프랑크푸르트
+  Berlin:
+  - 베를린
+  Amsterdam:
+  - 암스테르담
+  Luxembourg:
+  - 룩셈부르크
+  New York:
+  - 뉴욕

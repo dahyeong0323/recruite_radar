@@ -186,6 +186,12 @@ def jsonld_items(html, config, url, as_of):
 
 
 def html_detail(html, config, url, as_of, source_id=None):
+    if config.adapter == 'kotra':
+        from app.events.collectors.coverage import kotra_item
+        return kotra_item(html, config, url, as_of, source_id)
+    if config.adapter in {'article', 'krx', 'bizinfo', 'kind'}:
+        from app.events.collectors.coverage import announcement_items
+        return announcement_items(html, config, url, as_of, source_id)
     structured = jsonld_items(html, config, url, as_of)
     if structured: return structured
     soup = BeautifulSoup(html, 'html.parser')

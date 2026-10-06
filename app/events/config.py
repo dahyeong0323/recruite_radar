@@ -4,11 +4,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 import yaml
 
 
+def default_organization_aliases():
+    path=Path(__file__).resolve().parents[2]/'config/events/organizers.yaml'
+    data=yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else {}
+    return {row['name']:row.get('aliases',[]) for row in (data or {}).get('organizations',[]) if row.get('korean')}
+
+
+def default_route_aliases():
+    path=Path(__file__).resolve().parents[2]/'config/events/coverage.yaml'
+    return (yaml.safe_load(path.read_text(encoding='utf-8')) or {}).get('route_cities',{}) if path.exists() else {}
+
+
 class EventSourceConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str
     url: str
-    adapter: Literal['friends', 'html', 'mofa', 'rss', 'ics', 'startupticker']
+    adapter: Literal['friends', 'html', 'mofa', 'rss', 'ics', 'startupticker', 'kotra', 'article', 'krx', 'samsung_ir', 'bizinfo', 'kind']
     organizer: str = ''
     enabled: bool = False
     validation_status: str = 'pending'
@@ -24,6 +35,17 @@ class EventSourceConfig(BaseModel):
     next_selector: str | None = None
     parser_version: int = 1
     timeout_seconds: int = Field(default=120, ge=15, le=300)
+    coverage_only: bool = False
+    discovery_enabled: bool = True
+    required_coverage: bool = False
+    domains: list[str] = Field(default_factory=list)
+    query_terms: list[str] = Field(default_factory=list)
+    source_role: Literal['organizer', 'publisher', 'aggregator'] = 'organizer'
+    validation_checked_at: str | None = None
+    next_validation_at: str | None = None
+    validation_reason: str = ''
+    organization_aliases: dict[str,list[str]] = Field(default_factory=default_organization_aliases)
+    route_city_aliases: dict[str,list[str]] = Field(default_factory=default_route_aliases)
 
     @model_validator(mode='after')
     def verified_enabled(self):
@@ -43,10 +65,12 @@ def config_data(settings, name: str) -> dict:
 
 
 def sources(settings) -> list[EventSourceConfig]:
-    rows = [EventSourceConfig.model_validate(row) for row in config_data(settings, 'sources').get('sources', [])]
+    aliases={row['name']:row.get('aliases',[]) for row in config_data(settings,'organizers').get('organizations',[]) if row.get('korean')}
+    routes=config_data(settings,'coverage').get('route_cities',{})
+    rows = [EventSourceConfig.model_validate({**row,'organization_aliases':aliases,'route_city_aliases':routes}) for row in config_data(settings, 'sources').get('sources', [])]
     if len({row.id for row in rows}) != len(rows):
         raise ValueError('duplicate event source ID')
-    return rows
+    return [row for row in rows if not row.coverage_only or settings.event_coverage_enabled]
 
 
 def validate_rules(settings):

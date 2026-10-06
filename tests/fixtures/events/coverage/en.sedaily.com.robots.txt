@@ -1,0 +1,232 @@
+User-Agent: *
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: GPTBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Amazonbot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: ClaudeBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: anthropic-ai
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Google-Extended
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Bytespider
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: CCBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: cohere-ai
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Claude-User
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Perplexity-User
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: OAI-SearchBot-User
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: GoogleOther
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: MistralAI-User
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Google-CloudVertexBot
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /signal/
+Disallow: /search
+Disallow: /*?embed=
+
+User-Agent: Yeti
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+User-Agent: Daumoa
+Allow: /
+Disallow: /api/
+Disallow: /private/
+Disallow: /key/mypage
+Disallow: /search
+Disallow: /*?embed=
+Disallow: /signal/subscribe
+Disallow: /signal/mypage
+
+Host: https://en.sedaily.com
+Sitemap: https://en.sedaily.com/sitemap-index.xml
+Sitemap: https://en.sedaily.com/sitemap.xml
+Sitemap: https://en.sedaily.com/news-sitemap.xml
+Sitemap: https://en.sedaily.com/atlas/sitemap.xml

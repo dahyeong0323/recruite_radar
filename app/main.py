@@ -140,8 +140,8 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: st
             text = str(message.get("text", "")).split()[0] if message.get("text") else ""
             if text:
                 if event_service and text == "/help":
-                    await client.send_message(chat_id, "🇨🇭 Event 명령어: /events /events_high /events_geneva /events_zurich /events_saved /events_status")
-                if event_service and text in {"/events", "/events_high", "/events_geneva", "/events_zurich", "/events_saved", "/events_status"}:
+                    await client.send_message(chat_id, "🇨🇭 Event 명령어: /events /events_high /events_geneva /events_zurich /events_saved /events_watch /events_status")
+                if event_service and text in {"/events", "/events_high", "/events_geneva", "/events_zurich", "/events_saved", "/events_watch", "/events_status"}:
                     await event_service.handle_command(client, chat_id, text)
                     return {"ok": True}
                 await handle_command(client, chat_id, text, load_index(settings.index_path), service._health_state())

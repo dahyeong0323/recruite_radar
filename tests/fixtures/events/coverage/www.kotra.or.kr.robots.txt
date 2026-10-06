@@ -1,0 +1,17 @@
+User-agent: *
+Disallow:/*/ovrssKbc/selectOvrssKbcDetail.do
+Disallow:/system/*
+Disallow:/subMngr/*
+Disallow:/english/cmm/mber/*
+Disallow:/cmm/mber/login/*
+Disallow:/vdi/*
+Disallow:/*/cmm/mber/login/*
+Disallow:/*/mngr*
+Disallow:/mngr*
+Disallow:/*/fileDown.do
+Disallow:/unitySearch.do
+Disallow:/innorix/*
+Allow:/index.do
+Allow:/*/index.do
+Allow:/subList/
+Allow:/*/subList/

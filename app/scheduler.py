@@ -52,7 +52,7 @@ def configure_scheduler(service, timezone: str = "Asia/Seoul", event_service=Non
         options = dict(replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=3600)
         scheduler.add_job(event_service.collect_due, IntervalTrigger(hours=1, timezone="Europe/Zurich"), id="event-discovery", **options)
         scheduler.add_job(event_service.refresh_events, IntervalTrigger(hours=6, timezone="Europe/Zurich"), id="event-refresh", **options)
-        scheduler.add_job(event_service.discover_search, CronTrigger(hour=8, minute=15, timezone="Europe/Zurich"), id="event-search", **options)
+        scheduler.add_job(event_service.discover_search, CronTrigger(hour="8,14,20" if event_service.settings.event_coverage_enabled else 8, minute=15, timezone="Europe/Zurich"), id="event-search", **options)
         scheduler.add_job(event_service.advance_lifecycle, IntervalTrigger(hours=1, timezone="Europe/Zurich"), id="event-lifecycle", **options)
         scheduler.add_job(event_service.dispatch_outbox, IntervalTrigger(minutes=5, timezone="Europe/Zurich"), id="event-outbox", **options)
         scheduler.add_job(event_service.send_digest, CronTrigger(hour=18, minute=30, timezone="Europe/Zurich"), id="event-digest", **options)

@@ -77,6 +77,8 @@ class Settings:
     brave_search_api_key: str | None = None
     event_search_free_verified: bool = False
     event_search_free_remaining: int = 0
+    event_coverage_enabled: bool = False
+    event_search_free_month: str | None = None
 
     @property
     def secrets(self) -> tuple[str | None, ...]:
@@ -162,4 +164,6 @@ def load_settings(project_root: Path | None = None) -> Settings:
         brave_search_api_key=os.getenv("BRAVE_SEARCH_API_KEY") or None,
         event_search_free_verified=_bool_env("EVENT_SEARCH_FREE_VERIFIED", False),
         event_search_free_remaining=max(0, int(os.getenv("EVENT_SEARCH_FREE_REMAINING", "0"))),
+        event_coverage_enabled=_bool_env("EVENT_COVERAGE_ENABLED", False),
+        event_search_free_month=os.getenv("EVENT_SEARCH_FREE_MONTH") or None,
     )

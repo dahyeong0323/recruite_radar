@@ -10,7 +10,8 @@ def write_views(root, events):
               'Zurich': [e for e in upcoming if e.facts.city == 'Zurich'],
               'Finance': [e for e in alive if e.evaluation.scores.get('finance', 0) >= 50],
               'Korean Corporate': [e for e in alive if e.evaluation.korea_verified and e.facts.participating_organizations],
-              'Attended': [e for e in alive if e.user_status == 'attended']}
+              'Attended': [e for e in alive if e.user_status == 'attended'],
+              'Watch': [e for e in alive if e.assessment_status in {'watching', 'stale'}]}
     for title, rows in groups.items():
         lines = [f'# Events — {title}', '', '| Date | City | Event | Priority | Score |', '|---|---|---|---|---:|']
         for event in sorted(rows, key=lambda e: (str(e.facts.start_date or '9999'), -e.evaluation.overall_score)):

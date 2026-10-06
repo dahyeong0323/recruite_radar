@@ -22,6 +22,8 @@ def match_event(item: EventSourceItem, events: list[CanonicalEvent]) -> Match:
         # A stable source occurrence ID may explicitly carry a schedule change.
         source_ids = {item.source_id, item.evidence.get('legacy_source_id')}
         if any(o.source == item.source and o.source_id in source_ids for o in event.observations):
+            if f.schedule_year and old.schedule_year and f.schedule_year != old.schedule_year:
+                continue
             if f.edition and old.edition and f.edition != old.edition:
                 continue
             if f.start_date and old.start_date and f.start_date.year != old.start_date.year and old.event_status != 'postponed' and not item.evidence.get('previous_start_date'):
@@ -35,6 +37,15 @@ def match_event(item: EventSourceItem, events: list[CanonicalEvent]) -> Match:
         city_ok = bool(f.city and old.city and normalized(f.city) == normalized(old.city))
         org_ok = bool({normalized(o) for o in f.organizers} & {normalized(o) for o in old.organizers})
         similarity = SequenceMatcher(None, normalized(f.title), normalized(old.title)).ratio()
+        if f.occurrence_kind != old.occurrence_kind and {f.occurrence_kind, old.occurrence_kind} != {'event', 'city_stop'}:
+            continue
+        # Month precision permits a subsequent exact schedule, without merging
+        # annual editions or other cities. Ambiguous matches remain for review.
+        incomplete, complete = (old, f) if old.start_date is None else (f, old)
+        month_ok = bool(complete.start_date and incomplete.schedule_year == complete.start_date.year
+                        and incomplete.schedule_month == complete.start_date.month)
+        if month_ok and city_ok and org_ok and similarity >= .88:
+            candidates.append((event.event_id, True)); continue
         # First v2 fetch may already contain an edited date. Recognize the v1
         # date-derived ID from the stored evidence, without changing canonical ID.
         legacy_id = hashlib.sha256(f'{normalized(old.title)}:{old.start_date}'.encode()).hexdigest()[:20]
@@ -61,6 +72,9 @@ def match_event(item: EventSourceItem, events: list[CanonicalEvent]) -> Match:
         if f.city and old.city and not city_ok:
             continue
         if f.edition and old.edition and f.edition != old.edition:
+            continue
+        if (f.schedule_year and old.schedule_year and f.schedule_year != old.schedule_year
+                or f.schedule_month and old.schedule_month and f.schedule_month != old.schedule_month):
             continue
         if date_ok and city_ok and ((org_ok and similarity >= .88) or (same_url and similarity >= .65)):
             candidates.append((event.event_id, True))

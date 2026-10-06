@@ -103,20 +103,20 @@ class EventHttp:
         delay = self.robots[origin].crawl_delay(USER_AGENT)
         if delay: self.delay = max(self.delay, float(delay))
 
-    async def get(self, url, *, headers=None, robots=True):
+    async def get(self, url, *, headers=None, robots=True, max_attempts=3):
         if robots: await self.allowed(url)
-        for attempt in range(3):
+        for attempt in range(max_attempts):
             try:
                 response = await self._request(url, headers=headers, enforce_robots=robots)
                 if response.status_code in {401, 403}: raise AccessBlocked('source access blocked')
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt == 2: response.raise_for_status()
+                    if attempt == max_attempts - 1: response.raise_for_status()
                     retry = response.headers.get('Retry-After', '')
                     await asyncio.sleep(min(float(retry) if retry.isdigit() else 2 ** attempt, 30))
                     continue
                 response.raise_for_status()
                 return response
             except (httpx.TimeoutException, httpx.NetworkError):
-                if attempt == 2: raise
+                if attempt == max_attempts - 1: raise
                 await asyncio.sleep(2 ** attempt)
         raise RuntimeError('request exhausted')

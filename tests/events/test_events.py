@@ -181,7 +181,7 @@ def test_canonical_path_escape_and_future_schema(settings):
     repo=EventRepository(settings);e=canonical();e.file_path='../escape.md'
     with pytest.raises(ValueError):repo.write(e)
     e.file_path='';repo.write(e)
-    path=repo.path(e);text=path.read_text(encoding='utf-8').replace('schema_version: 1','schema_version: 99');path.write_text(text,encoding='utf-8')
+    path=repo.path(e);text=path.read_text(encoding='utf-8').replace(f'schema_version: {e.schema_version}','schema_version: 99');path.write_text(text,encoding='utf-8')
     assert repo.rebuild() == [] and repo.errors
 
 

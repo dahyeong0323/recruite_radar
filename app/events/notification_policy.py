@@ -5,6 +5,13 @@ def notification_eligible(event, settings, kind):
     """Keep storage/scoring broad; apply configured geography to notifications."""
     if event.merged_into or event.user_status == 'ignored' or event.verification_status == 'pending':
         return False
+    if kind == 'watch':
+        from app.events.watch import high_value_signal
+        return (settings.event_coverage_enabled and event.assessment_status == 'watching'
+                and high_value_signal(event) and event.facts.country == 'CH'
+                and event.facts.event_status not in {'completed', 'cancelled', 'postponed'})
+    if event.assessment_status in {'stale', 'dismissed', 'candidate'}:
+        return False
     # Changes to an already followed/notified event must still reach the user,
     # including a move to a venue outside the normal discovery geography.
     if kind == 'update':

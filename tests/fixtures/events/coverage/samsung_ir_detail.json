@@ -1,0 +1,38 @@
+{
+  "content": "",
+  "viewFile": [],
+  "view": {
+    "KRITEMNM": "",
+    "INVSTOPINCONTS": "",
+    "PROCDTIME2": "20240826      ",
+    "ENDDT": "",
+    "APPENFILEEXISTYN": "N",
+    "NTCOBJREFRCNT": "1",
+    "NTCTITLE1": "Samsung Asia Conference 2024",
+    "FIXWRTNGYN": "N",
+    "MENUSEQNO": "128",
+    "COMUSPOTCONTS": "",
+    "MENUNO2": "08040101  ",
+    "REFLYN": "Y",
+    "ITEMCD": "",
+    "INPNM": "480018",
+    "ETCCONTS2": "",
+    "ETCCONTS1": "",
+    "NTCOBJSECTCD": "G",
+    "EDITSECTCD": " ",
+    "ISSUPRC": "0",
+    "STARTDT": ""
+  },
+  "dateList": [
+    {
+      "MENUSEQNO": "128",
+      "MENUNO2": "08040101  ",
+      "PROCDT": "2024.08.26"
+    },
+    {
+      "MENUSEQNO": "128",
+      "MENUNO2": "08040101  ",
+      "PROCDT": "2024.08.29"
+    }
+  ]
+}

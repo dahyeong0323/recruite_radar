@@ -3,17 +3,21 @@ import hashlib
 from datetime import timedelta
 from app.events.config import config_data
 from app.events.collectors.http import validate_url
+from app.events.normalize import canonical_url
 
 
 def queue_signals(queue, signals, source, as_of):
     for signal in signals:
         import re
         edition = next(iter(re.findall(r'\b20\d{2}\b', signal.get('title', ''))), '')
+        signal = dict(signal, url=canonical_url(signal['url']))
         key = hashlib.sha256((source + ':' + signal['url'] + ':' + edition).encode()).hexdigest()
         old = queue.get(key, {})
         queue[key] = {**signal, 'source': source, 'discovered_at': old.get('discovered_at', as_of.isoformat()),
                       'attempts': old.get('attempts', 0), 'next_retry_at': old.get('next_retry_at', as_of.isoformat()),
                       'state': old.get('state', 'pending')}
+        if old.get('state') in {'rejected', 'stale'} and old.get('snippet') != signal.get('snippet'):
+            queue[key].update(state='pending', next_retry_at=as_of.isoformat())
         if signal.get('reason') == 'detail_retry':
             queue[key].update(state='pending', next_retry_at=as_of.isoformat())
 

@@ -34,7 +34,32 @@ def event_health(repository, configs, as_of):
     delivery_failures = sum(row.get('state') in {'failed', 'rejected'} for row in outbox.get('deliveries', {}).values())
     pending = sum(row.get('state') == 'pending' for row in queue.get('signals', {}).values())
     if status != 'FAILED' and (unknown or delivery_failures or diagnostics.get('count') or state.get('git_failed') or state.get('telegram_failed')): status = 'DEGRADED'
-    return {'status': status, 'sources': rows, 'delivery_unknown': unknown, 'queue_pending': pending,
+    coverage = {'status': 'DISABLED', 'gaps': []}
+    if repository.settings.event_coverage_enabled:
+        from app.events.config import config_data
+        prefs = config_data(repository.settings,'coverage')
+        required = prefs.get('required_organizations',[])
+        search_on = state.get('search_status') in {'success','partial'}
+        gaps = []
+        for source in required:
+            cfg = next((c for c in configs if c.id == source),None)
+            if not cfg or not cfg.enabled and not search_on:
+                gaps.append(source + ': no working collector or search discovery')
+        if not search_on: gaps.append('search: ' + state.get('search_status','not_configured'))
+        queries = state.get('search',{}).get('queries',{})
+        for qid,row in queries.items():
+            if row.get('status') in {'failed','reserved'}: gaps.append('query ' + qid + ': ' + row['status'])
+            checked = row.get('last_completed_at')
+            if checked and as_of-datetime.fromisoformat(checked) > timedelta(hours=prefs.get('query_max_age_hours',72)):
+                gaps.append('query ' + qid + ': overdue')
+        stale = sum(e.assessment_status == 'stale' for e in repository.load())
+        if stale: gaps.append(f'{stale} stale Watch records')
+        blocked = sum(s.get('outcome') == 'blocked' for s in queue.get('signals',{}).values())
+        if blocked: gaps.append(f'{blocked} blocked discovery signals')
+        coverage = {'status':'DEGRADED' if gaps else 'HEALTHY','gaps':gaps,
+                    'validation_pending':[c.id for c in configs if c.required_coverage and not c.enabled],
+                    'stale_watch':stale,'blocked_signals':blocked}
+    return {'status': status, 'coverage': coverage, 'sources': rows, 'delivery_unknown': unknown, 'queue_pending': pending,
             'delivery_failures': delivery_failures, 'search': state.get('search_status', 'not_configured'), 'index_errors': diagnostics.get('count', 0)}
 
 
@@ -49,5 +74,7 @@ def write_health(repository, data):
     lines = ['# Swiss Korea Event Radar Health', '', f'- State: **{data["status"]}**',
              f'- Uncertain deliveries: {data.get("delivery_unknown", 0)}', f'- Pending discovery: {data.get("queue_pending", 0)}',
              f'- Search: {data.get("search", "not_configured")}', '', '| Source | Enabled | Outcome | Last success |', '|---|---|---|---|']
+    lines[5:5] = [f'- Coverage: {data.get("coverage",{}).get("status","DISABLED")}',
+                  *['- Coverage gap: '+g for g in data.get('coverage',{}).get('gaps',[])]]
     lines.extend(f'| {r["source"]} | {r["enabled"]} | {r.get("outcome", "never")} | {r.get("last_success_at", "never")} |' for r in data.get('sources', []))
     atomic_write_text(repository.system / 'Health.md', '\n'.join(lines) + '\n')
