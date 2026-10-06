@@ -34,7 +34,13 @@ def test_vcs_fixture_parse(settings):
     assert item.deadline is not None
 
 
-def test_kofia_fixture_parse(settings):
+def test_kofia_fixture_parse(settings, monkeypatch):
+    class FixtureClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 31, tzinfo=tz)
+
+    monkeypatch.setattr("app.collectors.kofia.datetime", FixtureClock)
     collector = KofiaCollector(settings)
     listing = collector.parse_list((FIXTURES / "kofia/list.html").read_text(encoding="utf-8"), "https://kofia.test/list?page=1")
     item = collector.parse_detail((FIXTURES / "kofia/detail.html").read_text(encoding="utf-8"), listing[0])

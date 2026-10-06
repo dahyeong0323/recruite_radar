@@ -1,0 +1,90 @@
+sources:
+  - id: friends_of_korea
+    url: https://friendsofkorea.ch/event/
+    adapter: friends
+    organizer: Friends of Korea
+    enabled: true
+    validation_status: verified
+    terms_status: public_read
+    trust: 5
+    interval_hours: 12
+    max_pages: 3
+    next_selector: a.next.page-numbers
+  - id: sge
+    url: https://www.s-ge.com/export/en/events/all-events/upcoming-events
+    adapter: html
+    organizer: Switzerland Global Enterprise
+    enabled: false
+    validation_status: pending_pagination
+    terms_status: public_read
+    trust: 5
+    list_selector: a[href*='/s-ge-event/']
+    detail_selector: main
+  - id: embassy_bern
+    url: https://che-berne.mofa.go.kr/ch-ko/brd/m_8038/list.do
+    adapter: mofa
+    organizer: Embassy of the Republic of Korea in Switzerland
+    enabled: true
+    validation_status: verified
+    terms_status: public_read
+    trust: 5
+    interval_hours: 6
+    detail_selector: .se-contents
+    title_selector: .board_detail .bo_head h2
+  - id: mission_geneva
+    url: https://overseas.mofa.go.kr/ch-geneva-ko/brd/m_8846/list.do
+    adapter: mofa
+    organizer: Permanent Mission of the Republic of Korea in Geneva
+    enabled: true
+    validation_status: verified
+    terms_status: public_read
+    trust: 5
+    interval_hours: 6
+    detail_selector: .se-contents
+    title_selector: .board_detail .bo_head h2
+  - id: kotra_zurich
+    url: https://www.kotra.or.kr/KBC/zurich
+    adapter: html
+    organizer: KOTRA Zurich
+    validation_status: official_landing_404
+    terms_status: pending
+    trust: 5
+    interval_hours: 6
+  - id: krx
+    url: https://global.krx.co.kr/
+    adapter: html
+    organizer: Korea Exchange
+    validation_status: pending
+    terms_status: pending
+    trust: 5
+    interval_hours: 6
+  - id: samsung_securities
+    url: https://www.samsungpop.com/
+    adapter: html
+    organizer: Samsung Securities
+    validation_status: pending
+    terms_status: pending
+    trust: 5
+    interval_hours: 6
+  - id: skbc
+    url: https://www.skbckorea.com/past-events
+    adapter: html
+    organizer: Swiss-Korean Business Council
+    validation_status: pending
+    terms_status: pending
+    trust: 4
+  - id: startupticker
+    url: https://www.startupticker.ch/en/events
+    adapter: startupticker
+    organizer: ''
+    enabled: true
+    validation_status: verified
+    terms_status: public_read
+    trust: 3
+    interval_hours: 12
+    max_pages: 1
+    max_details: 8
+    list_selector: main a[href*='/en/events/']:not([href$='/submit'])
+    detail_selector: .main-content .item
+    title_selector: h1
+    next_selector: .pagination a.next

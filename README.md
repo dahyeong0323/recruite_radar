@@ -163,3 +163,111 @@ All third-party exceptions pass through central redaction before health notes, r
 ## Configuration ownership
 
 `config/scoring.yaml` remains the finance scoring source. `config/content_scoring.yaml` and `config/content_watchlist.yaml` are loaded by the content runtime. `config/taxonomy.yaml` documents the vocabulary whose executable schema is canonical in `app/models.py`. Candidate preference and example watchlist files remain operator templates.
+
+## Swiss Korea Event Radar
+
+The Event domain lives in `app/events`, separately from Job models, scoring,
+indexes and delivery fingerprints. Set `EVENT_RADAR_ENABLED=true` to register
+its scheduler and Telegram routes; the default is false. Existing Job source
+settings and schedules continue to apply independently. Event times and digest
+use `Europe/Zurich`, including daylight saving time.
+
+Canonical notes are under `Career/Recruiting_Radar/Events/<discovery-year>/`.
+Event dates changing do not move the note or change its ID. Facts, source
+observations, field provenance, before/after changes, user status and notification
+intents are stored in Markdown frontmatter. Edit personal content outside the
+`event:auto` markers; automatic refresh preserves it. Event indexes and seven
+views are rebuildable. Source state, discovery queues and outbox receipts under
+`_System/Events` are durable operational data, not disposable projections.
+
+`config/events/sources.yaml` owns URLs, parser type, source trust, polling cadence,
+request caps, parser versions and validation status. Only verified sources with
+public-read policy can be enabled. Currently enabled: Friends of Korea upcoming
+events, the Bern embassy activities board, Geneva mission activities board and
+Startupticker's calendar. Administrative notices are excluded. Retrospective
+events and low scoring events remain stored. S-GE is disabled pending Load More
+pagination validation; its real JSON-LD detail parser is tested. KOTRA's legacy
+Zurich landing URL returned 404. Other IR and organizer sources remain explicitly
+pending rather than being counted as working collectors.
+
+Collectors support official HTML, JSON-LD Event, RSS/Atom discovery links and
+explicit ICS VEVENT occurrences. ICS recurrence rules are retained as evidence;
+the collector does not invent/expand recurrence dates. Add a source by configuring
+an adapter and committing real list/detail/empty/pagination fixtures. Newly found
+organizers do not automatically become trusted or broadly crawled sources.
+
+Discovery collects outside the Vault lock and writes a local persistent spool
+beside the production Vault volume. Applying a batch synchronizes Git and
+rechecks identity under the existing operation lock. A failed Git push retains
+the spool. Detail failures retain list facts plus a durable retry URL. Every scan
+checks the head as well as a historical continuation, so older pages do not hide
+new announcements. Robots rules, Crawl-Delay, bounded retries and redirect URL
+validation apply to every public page request. Public search snippets are only
+discovery signals; they cannot establish verified dates, participants or priority.
+
+Search uses an optional Brave API key. Without it, official sources still run and
+health reports `not_configured`. `EVENT_SEARCH_FREE_VERIFIED=true` and a positive
+`EVENT_SEARCH_FREE_REMAINING` are required. Configure a zero paid-spend cap at the
+provider before enabling it. The local ledger reserves requests durably before
+network calls and enforces the smaller of the verified free allowance, 20/day
+and 600/month. Usage reservations are not refunded on failure. No Event LLM calls
+are made. Search-result descriptions are not retained as canonical Event text.
+
+Event and registration states are separate. Date-only events finish on the next
+local day. Cancellation/postponement requires source evidence; a disappeared
+listing or HTTP failure is insufficient. Conservative cross-source matching uses
+dates, city, organizer and title; uncertain matches stay separate and appear in
+the dedupe review state. Official facts win, supplemental fields fill gaps and
+conflicts remain visible. Reviewed duplicates can be merged with alias notes
+preserving the original user's notes/status history.
+
+Scoring weights are in `config/events/scoring.yaml`, organizations in
+`organizers.yaml`, multilingual queries in `queries.yaml`, and Geneva-based
+geographic preferences in `preferences.yaml`. A is 75+, B is 55+. An A alert also
+requires verified Korea relevance and Swiss location. Invitation-only events can
+be A; eligibility, price and participants are never assumed. Unknown access is
+reported explicitly. Scores are retained after an event completes or cancels.
+
+Telegram: `/events`, `/events_high`, `/events_geneva`, `/events_zurich`,
+`/events_saved`, `/events_status`. Messages show dates, place, organizer,
+participants, reasons, access, registration and scores. Buttons record interest,
+registration and attendance; they do not register with an external organizer.
+A and material changes are immediate, B is included in the 18:30 digest once per
+meaningful version, and saved events have 7/1-day reminders. New alerts for past
+events are suppressed. A 5-minute worker drains durable intents.
+
+Delivery deliberately favors avoiding duplicates. Reserve in Git before sending;
+store Telegram message IDs on success. Definite connection failures and rate
+limits retry. Read/write timeout, ambiguous server failures or interrupted sending
+become `delivery_unknown` and never automatically resend. Health exposes them;
+an operator must explicitly request a retry. Telegram and Git cannot provide an
+atomic exactly-once transaction, so this policy can leave an uncertain message
+undelivered. Job delivery behavior is unchanged.
+
+Useful commands (global `DRY_RUN=true` selects an isolated local Vault):
+
+```powershell
+$env:DRY_RUN='true'
+$env:DRY_RUN_VAULT_ROOT='.runtime/event-verification'
+python -m app.cli events collect --force
+python -m app.cli events collect --source mission_geneva --force --backfill
+python -m app.cli events refresh
+python -m app.cli events preview
+python -m app.cli events health
+python -m app.cli events rebuild
+python -m app.cli events migrate             # validation / dry-run report
+python -m app.cli events migrate --apply     # exact backups before migration
+python -m app.cli events merge --from-id evt-OLD --into-id evt-CANONICAL
+python -m app.cli events resend --delivery-key 'evt-ID:update:FINGERPRINT'
+```
+
+`events ingest --fixture FILE --backfill` imports EventSourceItem JSON without
+creating alert intents. Preview never sends Telegram. In production all mutation
+commands use the same operation/Git locks as Job operations. Roll back by disabling
+`EVENT_RADAR_ENABLED`; preserve the Event notes and operational state.
+
+Event health is added under `/health.events` without changing Job readiness.
+Source age thresholds follow its configured cadence (2x degraded, 4x failed).
+Monthly JSONL logs, malformed-note diagnostics, queue backlog and uncertain
+deliveries are under `_System/Events`. CI runs the existing Job suite plus Event
+fixture, lifecycle, dedupe, persistence, scheduler and delivery failure tests.

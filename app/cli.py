@@ -43,6 +43,17 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("collect-all", "refresh-active", "digest", "deadline", "preview-content"):
         scheduled = sub.add_parser(name)
         scheduled.add_argument("--project-root", type=Path)
+    events = sub.add_parser("events")
+    events.add_argument("action", choices=["collect", "refresh", "search", "lifecycle", "outbox", "digest", "reminders", "preview", "health", "rebuild", "migrate", "ingest", "resend", "merge"])
+    events.add_argument("--project-root", type=Path)
+    events.add_argument("--source")
+    events.add_argument("--fixture", type=Path)
+    events.add_argument("--force", action="store_true")
+    events.add_argument("--backfill", action="store_true")
+    events.add_argument("--apply", action="store_true")
+    events.add_argument("--delivery-key")
+    events.add_argument("--from-id")
+    events.add_argument("--into-id")
     return parser
 
 
@@ -90,6 +101,9 @@ def _persist_cli(settings, message: str) -> None:
 
 async def run(args) -> int:
     settings = load_settings(getattr(args, "project_root", None))
+    if args.command == "events":
+        from app.events.cli import run_events
+        return await run_events(settings, args)
     if args.command == "bootstrap-vault":
         async with operation_lock(settings.vault_root):
             if not settings.dry_run:

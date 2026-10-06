@@ -1,0 +1,12 @@
+weights:
+  korea: 20
+  finance: 15
+  career: 10
+  networking: 20
+  attendees: 10
+  organizer: 5
+  strategic: 10
+  accessibility: 10
+thresholds:
+  A: 75
+  B: 55

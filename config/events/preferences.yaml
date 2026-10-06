@@ -1,0 +1,11 @@
+timezone: Europe/Zurich
+base_city: Geneva
+countries: [CH]
+adjacent_countries_enabled: false
+city_scores:
+  Geneva: 100
+  Lausanne: 90
+  Bern: 75
+  Basel: 65
+  Zurich: 60
+  Zug: 55

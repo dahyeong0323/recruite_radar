@@ -73,6 +73,10 @@ class Settings:
     http_retries: int = 3
     max_domain_concurrency: int = 2
     enabled_sources: tuple[str, ...] = SUPPORTED_SOURCES
+    event_radar_enabled: bool = False
+    brave_search_api_key: str | None = None
+    event_search_free_verified: bool = False
+    event_search_free_remaining: int = 0
 
     @property
     def secrets(self) -> tuple[str | None, ...]:
@@ -83,6 +87,7 @@ class Settings:
             self.openai_api_key,
             self.github_token,
             self.ssh_deploy_key,
+            self.brave_search_api_key,
         )
 
     @property
@@ -153,4 +158,8 @@ def load_settings(project_root: Path | None = None) -> Settings:
         jobkorea_licensed_access=_bool_env("JOBKOREA_LICENSED_ACCESS", False),
         scheduler_enabled=_bool_env("SCHEDULER_ENABLED", True),
         enabled_sources=_enabled_sources_env(),
+        event_radar_enabled=_bool_env("EVENT_RADAR_ENABLED", False),
+        brave_search_api_key=os.getenv("BRAVE_SEARCH_API_KEY") or None,
+        event_search_free_verified=_bool_env("EVENT_SEARCH_FREE_VERIFIED", False),
+        event_search_free_remaining=max(0, int(os.getenv("EVENT_SEARCH_FREE_REMAINING", "0"))),
     )

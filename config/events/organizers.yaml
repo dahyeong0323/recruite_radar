@@ -1,0 +1,33 @@
+organizations:
+  - id: krx
+    name: Korea Exchange
+    korean: true
+    aliases: [KRX, Korea Exchange, 한국거래소]
+  - id: samsung_securities
+    name: Samsung Securities
+    korean: true
+    aliases: [Samsung Securities, 삼성증권]
+  - id: kotra
+    name: KOTRA
+    korean: true
+    aliases: [KOTRA, 대한무역투자진흥공사]
+  - id: friends_of_korea
+    name: Friends of Korea
+    korean: true
+    aliases: [Friends of Korea]
+  - id: sge
+    name: Switzerland Global Enterprise
+    korean: false
+    aliases: [Switzerland Global Enterprise, S-GE]
+  - id: mirae
+    name: Mirae Asset
+    korean: true
+    aliases: [Mirae Asset, 미래에셋]
+  - id: kb
+    name: KB Financial
+    korean: true
+    aliases: [KB Financial, KB Securities, KB금융, KB증권]
+  - id: shinhan
+    name: Shinhan
+    korean: true
+    aliases: [Shinhan, 신한]
