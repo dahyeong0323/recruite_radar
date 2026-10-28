@@ -1,5 +1,25 @@
 # Korea Finance & Content Recruiting Radar
 
+### Career fit and application checks (2026-10-28)
+
+Content, Beauty / Consumer and Gaming / Consumer Internet priorities now use career
+fit independently of student eligibility, duration and Summer Fit. `job_fit_score`
+(also exposed as `relevance_score` for existing clients) uses high/medium/low role
+weights 80/55/10, plus 10 for internships/assistants and 10 for Europe-related duties.
+A requires 80, B requires 55. Unconfirmed qualifications and long or non-summer
+placements do not suppress A. Explicit student ineligibility and closed postings
+remain Archive, while their career-fit score is retained. Finance scoring is unchanged.
+
+`application_status`, `application_checks`, `actionability_score` and `summer_fit`
+describe eligibility and timing independently in Markdown, index and Telegram.
+Influencer marketers map to Marketing; international/B2B sales map to Sales.
+
+Run `radar reevaluate-fit --project-root /app` to preview existing canonical notes.
+Use `--apply` for backup-first updates under the operation lock; `--notify` also
+dispatches eligible A alerts through the existing durable outbox. Original IDs,
+source evidence, user notes/status/history and delivery state are preserved.
+Re-running an unchanged reassessment makes no further note changes.
+
 Dependencies are locked in `uv.lock`. CI runs the full test suite, byte-compilation,
 and a production Docker build for every push and pull request.
 

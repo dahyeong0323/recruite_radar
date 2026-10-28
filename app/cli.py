@@ -28,6 +28,10 @@ def _parser() -> argparse.ArgumentParser:
     audit = sub.add_parser("audit-classification")
     audit.add_argument("--apply", action="store_true")
     audit.add_argument("--project-root", type=Path)
+    fit = sub.add_parser("reevaluate-fit")
+    fit.add_argument("--apply", action="store_true")
+    fit.add_argument("--notify", action="store_true")
+    fit.add_argument("--project-root", type=Path)
     fixture = sub.add_parser("ingest-fixtures")
     fixture.add_argument("--fixture", type=Path, required=True)
     fixture.add_argument("--project-root", type=Path)
@@ -104,6 +108,21 @@ async def run(args) -> int:
     if args.command == "events":
         from app.events.cli import run_events
         return await run_events(settings, args)
+    if args.command == "reevaluate-fit":
+        from app.vault.job_fit_audit import reevaluate_fit
+        async with operation_lock(settings.vault_root):
+            if not settings.dry_run:
+                ensure_vault_checkout(settings)
+            result = reevaluate_fit(settings.radar_root, apply=args.apply)
+            if args.apply:
+                entries = rebuild_index(settings.radar_root)
+                write_dashboards(settings.radar_root, entries)
+                _persist_cli(settings, "radar: separate career fit from application eligibility")
+                if args.notify:
+                    result['telegram_sent'] = await RadarService(settings)._send_immediate_alerts([])
+                    _persist_cli(settings, "radar: persist fit reassessment alerts")
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "bootstrap-vault":
         async with operation_lock(settings.vault_root):
             if not settings.dry_run:

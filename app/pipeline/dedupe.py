@@ -71,6 +71,10 @@ def canonical_material_fingerprint(metadata: Mapping[str, Any]) -> str:
         "experience_min": metadata.get("experience_min"),
         "experience_max": metadata.get("experience_max"),
     }
+    if metadata.get('category', 'Finance') != 'Finance' and metadata.get('job_fit_score') is not None:
+        payload['fit_policy'] = {'priority': metadata.get('priority'),
+            'application_status': metadata.get('application_status'),
+            'application_checks': metadata.get('application_checks') or []}
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

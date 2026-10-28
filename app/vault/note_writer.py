@@ -163,6 +163,12 @@ def build_metadata(
         deadline=_date_only(item.deadline) or _date_only(existing.get("deadline")),
         requirements_present=bool(item.body_text) or bool(existing),
     )
+    if classification.category != 'Finance' and scored.job_fit_score is not None:
+        from app.pipeline.job_fit import apply_job_fit
+        scored = apply_job_fit(scored, item.model_copy(update={'active': status == 'active',
+            'start_date': item.start_date or existing.get('start_date'),
+            'end_date': item.end_date or existing.get('end_date'),
+            'deadline': item.deadline or existing.get('deadline')}), None)
     relevance_score = int(existing.get("relevance_score") or 0) if pending and existing else scored.relevance_score
     actionability_score = int(existing.get("actionability_score") or 0) if pending and existing else scored.actionability_score
     priority = existing.get("priority") if pending and existing.get("priority") else scored.priority
@@ -183,6 +189,10 @@ def build_metadata(
         "priority": priority,
         "relevance_score": relevance_score,
         "actionability_score": actionability_score,
+        "job_fit_score": existing.get("job_fit_score") if pending and existing else scored.job_fit_score,
+        "job_fit_policy_version": 2 if scored.job_fit_score is not None else existing.get('job_fit_policy_version'),
+        "application_status": existing.get("application_status") if pending and existing else scored.application_status,
+        "application_checks": existing.get("application_checks", []) if pending and existing else scored.application_checks,
         "classification_confidence": confidence,
         "status": status,
         "user_status": existing.get("user_status", "unreviewed"),
@@ -204,8 +214,8 @@ def build_metadata(
         "internship_duration": existing.get("internship_duration") if preserve_official else classification.internship_duration or existing.get("internship_duration"),
         "duration_min_weeks": existing.get("duration_min_weeks") if preserve_official else classification.duration_min_weeks if classification.duration_min_weeks is not None else existing.get("duration_min_weeks"),
         "duration_max_weeks": existing.get("duration_max_weeks") if preserve_official else classification.duration_max_weeks if classification.duration_max_weeks is not None else existing.get("duration_max_weeks"),
-        "summer_fit": existing.get("summer_fit", "UNKNOWN") if preserve_official else classification.summer_fit if classification.category != "Finance" else existing.get("summer_fit", "UNKNOWN"),
-        "summer_fit_reason": existing.get("summer_fit_reason") if preserve_official else classification.summer_fit_reason or existing.get("summer_fit_reason"),
+        "summer_fit": existing.get("summer_fit", "UNKNOWN") if preserve_official else scored.summer_fit if classification.category != "Finance" else existing.get("summer_fit", "UNKNOWN"),
+        "summer_fit_reason": existing.get("summer_fit_reason") if preserve_official else scored.summer_fit_reason or existing.get("summer_fit_reason"),
         "required_skills": existing.get("required_skills") or [] if preserve_official else classification.required_skills or existing.get("required_skills") or [],
         "preferred_skills": existing.get("preferred_skills") or [] if preserve_official else classification.preferred_skills or existing.get("preferred_skills") or [],
         "conversion_possible": conversion_possible,
@@ -313,6 +323,7 @@ def render_job_note(
 - **Deadline:** {deadline_line}
 - **Relevance:** {metadata.get('relevance_score')}/100
 - **Actionability:** {metadata.get('actionability_score')}/100
+{('- **직무 적합도:** ' + str(metadata.get('job_fit_score')) + '/100' + chr(10) + '- **지원 가능성:** ' + str(metadata.get('application_status')) + chr(10) + '- **확인 사항:** ' + (' / '.join(metadata.get('application_checks') or []) or '없음')) if metadata.get('job_fit_score') is not None else ''}
 - **User status:** `{metadata.get('user_status')}`
 
 ## 핵심 업무

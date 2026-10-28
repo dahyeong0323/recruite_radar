@@ -87,6 +87,9 @@ def _list_message(command: str, entries: list[IndexEntry], *, limit: int = 8) ->
             f"{entry.title}\n"
             f"{entry.content_subcategory or entry.sector} · {entry.seniority} · {_deadline_text(entry)} · 점수 {entry.relevance_score}"
         )
+        if entry.job_fit_score is not None:
+            checks = ' / '.join(entry.application_checks)
+            blocks[-1] += f'\n직무 적합도 {entry.job_fit_score} · 지원 확인: {checks or "미확인 사항 없음"}'
         urls = entry.application_urls or entry.source_urls
         if urls:
             button_title = f"{number}. {company} — {entry.title}"

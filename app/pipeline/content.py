@@ -4,12 +4,11 @@ import re
 from datetime import date
 from pathlib import Path
 
-import yaml
-
 from app.content_watchlist import content_company_for
 from app.models import ClassificationResult, ContentSubcategory, SourceItem
 from app.pipeline.extract import extract_evidence_lines
 from app.utils.text import clean_text
+from app.pipeline.job_fit import apply_job_fit
 
 
 SUBCATEGORY_TERMS: list[tuple[ContentSubcategory, tuple[str, ...]]] = [
@@ -20,8 +19,8 @@ SUBCATEGORY_TERMS: list[tuple[ContentSubcategory, tuple[str, ...]]] = [
     ("Corporate Strategy", ("corporate strategy", "business strategy", "사업전략", "경영전략", "전략실")),
     ("Content Strategy", ("content strategy", "콘텐츠 전략", "콘텐츠전략", "편성 전략")),
     ("IP Business", ("ip business", "ip사업", "ip 사업", "라이선스 사업", "licensing")),
-    ("Business Development", ("business development", "사업개발", "파트너십", "제휴사업")),
-    ("Marketing Strategy", ("marketing strategy", "마케팅 전략", "그로스", "growth", "crm", "performance marketing", "퍼포먼스 마케팅")),
+    ("Business Development", ("business development", "사업개발", "파트너십", "제휴사업", "해외영업", "글로벌 세일즈", "b2b 세일즈", "global sales", "international sales")),
+    ("Marketing Strategy", ("marketing strategy", "마케팅 전략", "그로스", "growth", "crm", "performance marketing", "퍼포먼스 마케팅", "인플루언서 마케터", "influencer marketer")),
     ("Platform / Product Business", ("product manager", "product business", "platform business", "서비스 기획", "플랫폼 사업", "플랫폼 기획", "pm", "서비스 전략")),
     ("Content Planning", ("content planning", "콘텐츠 기획", "콘텐츠기획", "웹툰 pd", "웹소설 pd", "md")),
     ("A&R / Artist", ("a&r", "artist", "아티스트", "캐스팅", "매니지먼트")),
@@ -129,11 +128,6 @@ def _skill_lines(text: str, preferred: bool) -> list[str]:
     return result
 
 
-def _weights() -> dict:
-    path = Path(__file__).resolve().parents[2] / "config" / "content_scoring.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-
-
 def classify_content(item: SourceItem) -> ClassificationResult:
     title = clean_text(item.title_raw)
     duties = clean_text(str(item.raw_metadata.get("duties_text") or item.body_text))
@@ -151,34 +145,18 @@ def classify_content(item: SourceItem) -> ClassificationResult:
         "Operations": "Operations",
         "HR / Corporate Support": "HR / Admin",
         "Engineering / Data": "Technology",
+        "Business Development": "Sales",
     }.get(subcategory, "Other")
-    weights = _weights()
     tier = "high" if subcategory in HIGH_SUBCATEGORIES else "medium" if subcategory in MEDIUM_SUBCATEGORIES else "low"
-    relevance = int(weights["role_fit"][tier])
-    relevance += int(weights["student_eligibility"]["eligible" if eligible is True else "ineligible" if eligible is False else "unknown"])
-    relevance += int(weights["summer_fit"].get(summer_fit, 0))
-    if seniority in {"Intern", "Trainee"}:
-        relevance += int(weights["junior_fit"])
+    if subcategory == 'Other Content' and re.search(r'마케터|marketer|marketing|마케팅', title, re.I):
+        tier, role_family = 'medium', 'Marketing'
     duty_lower = duties.casefold()
-    if any(term in duty_lower for term in ("france", "french", "europe", "프랑스", "유럽")):
-        relevance += int(weights["europe_signal"])
-    relevance = min(100, relevance)
-    if eligible is False:
-        relevance = min(20, relevance)
     actionability = min(100, (40 if eligible is True else 15 if eligible is None else 0) + (30 if summer_fit == "HIGH" else 20 if summer_fit == "POSSIBLE" else 5 if summer_fit == "UNKNOWN" else 0) + (20 if item.active is not False else 0) + (10 if item.deadline else 5))
-    if item.active is False or eligible is False:
-        priority = "Archive"
-    elif relevance >= int(weights["priority"]["A"]) and summer_fit not in {"LOW", "INELIGIBLE"}:
-        priority = "A"
-    elif relevance >= int(weights["priority"]["B"]):
-        priority = "B"
-    else:
-        priority = "C"
     evidence = extract_evidence_lines(item.body_text, ("인턴", "재학", "졸업", "개월", "전략", "글로벌", "IP", "리서치", "투자"), limit=6)
-    return ClassificationResult(
+    result = ClassificationResult(
         category="Content", content_subcategory=subcategory, sector="Unknown", subsector=subcategory,
         role_family=role_family, seniority=seniority, front_office=False,
-        relevance_score=relevance, actionability_score=actionability, priority=priority,
+        actionability_score=actionability,
         student_eligible=eligible, student_eligibility=eligibility_text,
         graduation_requirement=graduation, internship_duration=duration,
         duration_min_weeks=min_weeks, duration_max_weeks=max_weeks,
@@ -187,3 +165,4 @@ def classify_content(item: SourceItem) -> ClassificationResult:
         classification_confidence=0.9 if subcategory != "Other Content" and seniority != "Unknown" else 0.7,
         reasoning_short=evidence or [f"콘텐츠 직무 분류: {subcategory}"],
     )
+    return apply_job_fit(result, item, tier, europe=any(term in duty_lower for term in ("france", "french", "europe", "프랑스", "유럽")))

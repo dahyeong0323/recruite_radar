@@ -55,4 +55,8 @@ Confidence {round(classification.classification_confidence * 100)}%"""
     }
     if item.source == "linkareer":
         text = f"[LINKAREER] {text}"
+    if classification.category != "Finance" and classification.job_fit_score is not None:
+        status = {'eligible': '확인된 조건 충족', 'needs_verification': '확인 필요', 'ineligible': '지원 불가 명시'}.get(classification.application_status, '확인 필요')
+        checks = '\n'.join('• ' + line for line in classification.application_checks) or '• 미확인 사항 없음'
+        text += f"\n\n직무 적합도: {classification.job_fit_score}/100 · {classification.priority}\n지원 가능성: {status}\n{checks}"
     return text, markup

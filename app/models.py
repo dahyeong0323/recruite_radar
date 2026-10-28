@@ -123,6 +123,9 @@ class ClassificationResult(BaseModel):
     front_office: bool = False
     relevance_score: int = Field(default=0, ge=0, le=100)
     actionability_score: int = Field(default=0, ge=0, le=100)
+    job_fit_score: int | None = Field(default=None, ge=0, le=100)
+    application_status: Literal['eligible', 'needs_verification', 'ineligible'] | None = None
+    application_checks: list[str] = Field(default_factory=list)
     priority: Priority = "Archive"
     student_eligible: bool | None = None
     student_eligibility: str | None = None
@@ -178,6 +181,9 @@ class IndexEntry(BaseModel):
     priority: str = "Archive"
     relevance_score: int = 0
     actionability_score: int = 0
+    job_fit_score: int | None = None
+    application_status: str | None = None
+    application_checks: list[str] = Field(default_factory=list)
     status: str = "active"
     user_status: str = "unreviewed"
     deadline: date | None = None
